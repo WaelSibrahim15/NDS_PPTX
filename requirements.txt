@@ -1,0 +1,12 @@
+fastapi>=0.111
+uvicorn>=0.30
+python-multipart>=0.0.9
+anthropic>=0.116
+openai>=1.35
+python-pptx>=1.0.2
+python-docx>=1.1
+pypdf>=4.2
+mutagen>=1.47
+pydantic>=2.7
+pillow>=10.0
+imageio-ffmpeg>=0.5

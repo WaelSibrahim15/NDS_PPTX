@@ -1,0 +1,1917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NDS — Narrated Deck Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --deep: #060A45;
+    --bright: #2C6DF6;
+    --ink: #1a1d2e;
+    --muted: #6b728a;
+    --line: #e6e8f0;
+    --paper: #f4f5f8;
+    --card: #ffffff;
+    --teal: #0d9488;
+    --teal-soft: #e6f7f5;
+    --teal-bg: #f0faf9;
+    --orange: #c9782a;
+    --orange-soft: #fbf3e8;
+    --orange-bg: #fdf8f1;
+    --violet: #7c6bc4;
+    --violet-soft: #f1eef9;
+    --violet-bg: #f7f5fc;
+    --shadow: 0 1px 2px rgba(26,29,46,.04), 0 8px 24px rgba(26,29,46,.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: Manrope, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(900px 480px at 10% -10%, rgba(44,109,246,.08), transparent 55%),
+      radial-gradient(700px 400px at 95% 5%, rgba(13,148,136,.07), transparent 50%),
+      #fafafb;
+    min-height: 100vh;
+  }
+
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 36px 28px 80px;
+  }
+
+  /* ——— header ——— */
+  .page-head {
+    margin-bottom: 28px;
+    animation: rise .5s ease both;
+  }
+  .page-head .brand {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--bright);
+    margin-bottom: 8px;
+  }
+  .page-head h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 800;
+    letter-spacing: -.03em;
+    color: var(--deep);
+    line-height: 1.15;
+    margin-bottom: 10px;
+  }
+  .page-head p {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 52ch;
+    line-height: 1.5;
+  }
+
+  /* ——— cart / source bar ——— */
+  .cart {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    background: var(--paper);
+    border-radius: 16px;
+    margin-bottom: 22px;
+    animation: rise .55s .05s ease both;
+  }
+  .cart-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .cart-pill {
+    appearance: none;
+    border: 1.5px solid #d5d8e2;
+    background: #fff;
+    color: #9aa0b4;
+    border-radius: 999px;
+    padding: 8px 14px 8px 12px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: default;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: .15s ease;
+  }
+  .cart-pill .tick {
+    width: 16px; height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid #c5c9d6;
+    background: #fff;
+    display: grid; place-items: center;
+    font-size: 10px;
+    color: transparent;
+    flex: none;
+  }
+  .cart-pill.on {
+    background: var(--teal-soft);
+    border-color: #9ad5cf;
+    color: #0f766e;
+  }
+  .cart-pill.on .tick {
+    background: var(--teal);
+    border-color: var(--teal);
+    color: #fff;
+  }
+  .cart-file {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cart-file.on { color: var(--teal); }
+
+  /* ——— pipeline ——— */
+  .pipeline {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr;
+    gap: 12px;
+    align-items: stretch;
+    margin-bottom: 28px;
+    animation: rise .6s .1s ease both;
+  }
+  .pipe-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 22px;
+    font-weight: 700;
+    opacity: .45;
+    padding-top: 48px;
+  }
+  .pipe-arrow.from-teal { color: var(--teal); opacity: .7; }
+  .pipe-arrow.from-orange { color: var(--orange); opacity: .7; }
+
+  .step {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 20px 20px 18px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .step-badge {
+    display: inline-flex;
+    align-self: flex-start;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  .step.teal .step-badge { background: var(--teal-soft); color: var(--teal); }
+  .step.orange .step-badge { background: var(--orange-soft); color: var(--orange); }
+  .step.violet .step-badge { background: var(--violet-soft); color: var(--violet); }
+
+  .step h2 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--ink);
+    margin-bottom: 6px;
+    line-height: 1.25;
+  }
+  .step .desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 14px;
+  }
+
+  .step-body { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+
+  .dropzone {
+    border: 1.5px dashed #b8e0db;
+    background: var(--teal-bg);
+    border-radius: 14px;
+    padding: 22px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: .15s ease;
+  }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--teal);
+    background: var(--teal-soft);
+  }
+  .dropzone.has-file {
+    border-style: solid;
+    border-color: var(--teal);
+  }
+  .dropzone strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+  .dropzone #drop-hint {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .or-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .or-divider::before, .or-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #d5d8e2;
+  }
+  #source-paste {
+    min-height: 110px;
+    font-weight: 500;
+    font-size: 13px;
+    line-height: 1.5;
+    border-color: #b8e0db;
+    background: #fff;
+  }
+  #source-paste:focus { border-color: var(--teal); }
+  #paste-wrap.locked { display: none; }
+
+  .field-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  select, input[type=text], input[type=password], textarea {
+    width: 100%;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    background: #fff;
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  select:focus, input:focus, textarea:focus {
+    border-color: var(--bright);
+  }
+  textarea { font-weight: 500; resize: vertical; min-height: 64px; line-height: 1.45; }
+  .step select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b728a' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+  }
+
+  .logic {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    border-radius: 12px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .step.teal .logic { background: var(--teal-bg); color: #0f5c56; }
+  .step.orange .logic { background: var(--orange-bg); color: #8a5520; }
+  .step.violet .logic { background: var(--violet-bg); color: #5a4a96; }
+  .logic .kw { color: #0d9488; font-weight: 500; }
+  .step.orange .logic .kw { color: var(--orange); }
+  .step.violet .logic .kw { color: var(--violet); }
+
+  .out-block {
+    margin-top: auto;
+    padding-top: 12px;
+  }
+  .out-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    border: 1.5px solid var(--line);
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .step.teal .chip.on, .chip.teal-on {
+    border-color: #9ad5cf;
+    color: #0f766e;
+    background: #fff;
+  }
+  .mode-chip {
+    cursor: pointer;
+    border: 1.5px solid #edd9bd;
+    color: #b8956a;
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    transition: .15s;
+  }
+  .mode-chip:hover { border-color: var(--orange); color: var(--orange); }
+  .mode-chip.on {
+    border-color: var(--orange);
+    color: #9a5a18;
+    background: var(--orange-soft);
+    box-shadow: inset 0 0 0 1px rgba(201,120,42,.15);
+  }
+  .step.violet .chip {
+    border-color: #d4ccec;
+    color: #5a4a96;
+  }
+
+  .style-toggle {
+    display: flex;
+    gap: 6px;
+    background: var(--paper);
+    padding: 4px;
+    border-radius: 12px;
+  }
+  .style-toggle button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    border-radius: 9px;
+    padding: 9px 8px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .style-toggle button.on {
+    background: #fff;
+    color: var(--violet);
+    box-shadow: 0 1px 3px rgba(26,29,46,.08);
+  }
+
+  .cta-row { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  button#go, button#build, button.primary {
+    appearance: none;
+    border: 0;
+    background: var(--deep);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 12px 16px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform .12s, filter .12s;
+  }
+  button#go:hover, button#build:hover, button.primary:hover { filter: brightness(1.08); }
+  button#go:disabled, button#build:disabled { opacity: .5; cursor: not-allowed; }
+  button#build.orange, button.orange { background: var(--orange); }
+  button.small {
+    appearance: none;
+    border: 1.5px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  button.small.ghost { background: transparent; }
+  button.small.warn { border-color: #f0c2c2; color: #b00020; }
+  button.small:hover { border-color: var(--bright); color: var(--bright); }
+  button.iconbtn {
+    appearance: none;
+    border: 1.5px solid var(--line);
+    background: #fff;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    color: var(--muted);
+  }
+  button.iconbtn.danger:hover { border-color: #B00020; color: #B00020; }
+  .note { font-size: 12px; color: var(--muted); }
+  .hint-line { font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 6px; }
+  .hint-line code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    background: var(--paper);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  /* hidden native controls kept for JS */
+  .sr-only, select#narration_style {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  /* ——— lower panels ——— */
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 24px 26px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow);
+    animation: rise .55s ease both;
+  }
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .panel-head .n {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--bright);
+  }
+  .panel-head h2 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: var(--deep);
+  }
+  .panel-head .sub {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 12px 0 6px;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    align-items: end;
+  }
+
+  .mode-reel { display: none; } /* chips replace tiles in pipeline */
+
+  .bar {
+    height: 8px;
+    background: var(--paper);
+    border-radius: 999px;
+    overflow: hidden;
+    margin: 8px 0 12px;
+  }
+  #bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--teal), var(--bright));
+    border-radius: 999px;
+    transition: width .35s ease;
+  }
+  #status-text { font-size: 14px; color: var(--muted); min-height: 1.4em; }
+  #status-text.error { color: #b00020; font-weight: 600; }
+
+  a.download {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 8px 0 0;
+    padding: 10px 14px;
+    background: var(--teal-soft);
+    color: #0f766e;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 13px;
+    text-decoration: none;
+  }
+  a.download:hover { background: #d5f0ec; }
+
+  .slidecard {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: #fff;
+  }
+  .slidecard .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .slidecard .num {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--paper);
+    display: grid; place-items: center;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--bright);
+  }
+  .slidecard .spacer { flex: 1; }
+  .slidecard .cols { display: flex; gap: 16px; }
+  .slidecard .cols > div { flex: 1; min-width: 0; }
+  .slidecard label { margin-top: 8px; }
+  .slidecard .layout {
+    width: auto;
+    min-width: 120px;
+  }
+  .slide-thumb {
+    width: 100%;
+    max-width: 320px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    margin-bottom: 12px;
+    background: var(--paper);
+    aspect-ratio: 16/9;
+    object-fit: contain;
+  }
+  .slide-thumb.loading { opacity: .45; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  .regenrow { display: none; margin-top: 10px; gap: 10px; }
+  .regenrow.open { display: flex; }
+  .regenrow input { flex: 1; }
+  .busy { opacity: .55; pointer-events: none; }
+
+  #review-toolbar {
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--paper);
+  }
+  #review-toolbar > div { min-width: 150px; }
+  .savestate { font-size: 12px; color: var(--muted); margin-left: auto; font-style: italic; }
+
+  .hist-grid { display: grid; gap: 10px; }
+  .hist-row {
+    display: flex; gap: 12px; padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #fff;
+    font-size: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .hist-row .meta { color: var(--muted); font-size: 12px; }
+  .hist-row .links { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+  .hist-row a { color: var(--bright); font-weight: 700; text-decoration: none; }
+
+  details summary {
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--deep);
+    list-style: none;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  .keystate { font-size: 12px; margin-left: 6px; font-weight: 600; }
+  .keystate.ok { color: var(--teal); }
+  .keystate.error { color: #b00020; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--deep); color: #fff;
+    padding: 12px 20px; border-radius: 12px;
+    font-size: 14px; max-width: min(520px, 90vw); z-index: 1000;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: #8B1538; }
+  .toast.ok { background: #0A7B32; }
+  #cancel-btn { display: none; margin-top: 12px; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
+
+  /* ——— workspace: Sources | Studio ——— */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr;
+    gap: 18px;
+    margin-bottom: 22px;
+    animation: rise .55s .05s ease both;
+  }
+  .box {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 22px 22px 20px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .box-badge {
+    display: inline-flex;
+    align-self: flex-start;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  .box.sources .box-badge { background: var(--teal-soft); color: var(--teal); }
+  .box.studio .box-badge { background: var(--orange-soft); color: var(--orange); }
+  .box h2 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    margin-bottom: 6px;
+  }
+  .box .desc {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.45;
+    margin-bottom: 16px;
+  }
+  .studio-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .studio-grid .span2 { grid-column: 1 / -1; }
+  .studio-section {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .studio-section h3 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ——— Chat review ——— */
+  #chat-card {
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    background: linear-gradient(180deg, #f7f8fc 0%, #fff 120px);
+    padding: 24px 26px 28px;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow);
+  }
+  #chat-card .panel-head .n { color: var(--violet); }
+  .chat-toolbar {
+    display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+    margin-bottom: 18px; padding: 14px 16px;
+    border-radius: 14px; background: var(--paper);
+  }
+  .chat-toolbar > div { min-width: 140px; }
+  .chat-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .chat-stream {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .chat-slide {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 4px 16px rgba(26,29,46,.05);
+  }
+  .chat-slide .head {
+    display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
+  }
+  .chat-slide .num {
+    width: 36px; height: 36px; border-radius: 12px;
+    background: var(--violet-soft); color: var(--violet);
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 800;
+  }
+  .chat-slide .spacer { flex: 1; }
+  .chat-slide .layout { width: auto; min-width: 130px; }
+  .chat-body {
+    display: grid;
+    grid-template-columns: minmax(280px, 1.1fr) 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .chat-slide .slide-thumb {
+    width: 100%;
+    max-width: none;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    aspect-ratio: 16/9;
+    object-fit: contain;
+    margin-bottom: 0;
+  }
+  .chat-fields label { margin-top: 8px; }
+  .chat-deliver {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .chat-deliver .note { flex: 1; min-width: 180px; }
+  button#go, button#build-draft {
+    background: var(--deep);
+  }
+  button#build {
+    background: var(--violet);
+  }
+  button#build-draft {
+    background: var(--teal);
+  }
+
+  @media (max-width: 980px) {
+    .workspace { grid-template-columns: 1fr; }
+    .chat-body, .chat-meta { grid-template-columns: 1fr; }
+    .studio-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 980px) {
+    .pipeline { grid-template-columns: 1fr; }
+    .pipe-arrow { padding: 0; transform: rotate(90deg); }
+    .cart-file { margin-left: 0; width: 100%; }
+    .row, .slidecard .cols { grid-template-columns: 1fr; flex-direction: column; }
+  }
+  @media (max-width: 560px) {
+    .shell { padding: 20px 14px 60px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <header class="page-head">
+    <div class="brand">NIQ · Narrated Deck Studio</div>
+    <h1>Sources in. Studio out.</h1>
+    <p>Load a source, set design and voice options, create a silent PPTX draft, refine each slide in Chat, then deliver — or add narration.</p>
+  </header>
+
+  <div class="workspace" id="source-card">
+
+    <section class="box sources">
+      <span class="box-badge">Sources</span>
+      <h2>Feed the studio</h2>
+      <p class="desc">Upload a document or deck, or paste text. Types update with the mode you pick in Studio.</p>
+
+      <div class="cart" id="cart" aria-label="Accepted source types" style="margin:0 0 14px;padding:12px 14px">
+        <span class="cart-label">Accepts</span>
+        <span class="cart-pill on" data-ext=".docx" role="checkbox" aria-checked="true"><span class="tick">✓</span>DOCX</span>
+        <span class="cart-pill on" data-ext=".pdf" role="checkbox" aria-checked="true"><span class="tick">✓</span>PDF</span>
+        <span class="cart-pill on" data-ext=".pptx" role="checkbox" aria-checked="true"><span class="tick">✓</span>PPTX</span>
+        <span class="cart-pill on" data-ext=".txt" role="checkbox" aria-checked="true"><span class="tick">✓</span>TXT</span>
+        <span class="cart-pill on" data-ext=".md" role="checkbox" aria-checked="true"><span class="tick">✓</span>MD</span>
+        <span class="cart-pill on" data-ext=".mp3" role="checkbox" aria-checked="true"><span class="tick">✓</span>MP3</span>
+        <span class="cart-pill on" data-ext=".m4a" role="checkbox" aria-checked="true"><span class="tick">✓</span>M4A</span>
+        <span class="cart-pill on" data-ext=".wav" role="checkbox" aria-checked="true"><span class="tick">✓</span>WAV</span>
+        <span class="cart-pill on" data-ext="paste" id="cart-paste-pill" role="checkbox" aria-checked="true"><span class="tick">✓</span>Paste</span>
+      </div>
+      <div class="cart-file" id="cart-file-name" style="margin-bottom:12px">No source yet</div>
+
+      <div class="dropzone" id="drop" onclick="document.getElementById('file').click()" role="button" tabindex="0">
+        <strong id="drop-label">Drop a document here or click to choose</strong>
+        <div id="drop-hint">.docx · .pdf · .pptx · .txt · .md</div>
+          <input type="file" id="file" class="sr-only" accept=".docx,.pdf,.pptx,.txt,.md,.mp3,.m4a,.wav,.webm,.ogg,audio/*">
+        </div>
+        <div id="paste-wrap" style="margin-top:12px">
+          <div class="or-divider">or paste text</div>
+          <textarea id="source-paste" rows="6" placeholder="Paste brief, notes, or outline here…"></textarea>
+        </div>
+        <p class="hint-line" style="margin-top:10px">Audio (.mp3 / .m4a / .wav): transcribed, then the <em>original</em> recording is split onto each slide when you Create Narration.</p>
+      <div class="chips" id="accepted-chips" style="margin-top:12px">
+        <span class="chip teal-on">Ready</span>
+      </div>
+    </section>
+
+    <section class="box studio">
+      <span class="box-badge">Studio</span>
+      <h2>Design &amp; voice</h2>
+      <p class="desc">Choose how the deck is built. Draft first without voice — refine in Chat — then deliver or narrate.</p>
+
+      <div class="studio-grid">
+        <div class="span2">
+          <span class="field-label">Mode</span>
+          <select id="mode">
+            <option value="generate" selected>Create — NDS design</option>
+            <option value="gamma">Create — Gamma design</option>
+            <option value="narrate">Create narration for each slide</option>
+          </select>
+        </div>
+        <div id="template-wrap">
+          <span class="field-label">Template</span>
+          <select id="template">
+            <option value="niq">NIQ 2026</option>
+            <option value="neutral">Neutral professional</option>
+          </select>
+        </div>
+        <div>
+          <span class="field-label">Language</span>
+          <select id="language">
+            <option>English</option><option>French</option><option>German</option>
+            <option>Spanish</option><option>Italian</option>
+          </select>
+        </div>
+        <div class="span2">
+          <span class="field-label">Guidance (optional)</span>
+          <textarea id="guidance" rows="2" placeholder="e.g. 10 slides max, formal tone, audience: sales leadership"></textarea>
+        </div>
+        <div class="span2" id="design-notes-wrap">
+          <span class="field-label">Design notes (optional)</span>
+          <textarea id="design_notes" rows="2" placeholder="e.g. one stats slide, compare layout for do/don't"></textarea>
+          <p class="hint-line">NIQ PowerPoint compliance is applied automatically.</p>
+        </div>
+      </div>
+
+      <div class="studio-section">
+        <h3>Voice options (used when you create narration)</h3>
+        <div class="studio-grid">
+          <div class="span2">
+            <span class="field-label">Narration style</span>
+            <div class="style-toggle" id="style-toggle">
+              <button type="button" class="on" data-style="single">Single narrator</button>
+              <button type="button" data-style="conversation">Two-voice</button>
+            </div>
+            <select id="narration_style">
+              <option value="single" selected>Single narrator</option>
+              <option value="conversation">Two-voice conversation</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label">Voice provider</span>
+            <select id="provider">
+              <option value="openai">OpenAI (cloud)</option>
+              <option value="macos">macOS (offline)</option>
+            </select>
+          </div>
+          <div>
+            <span class="field-label" id="voice-label">Voice</span>
+            <select id="voice"></select>
+          </div>
+          <div id="voice2-wrap" style="display:none" class="span2">
+            <span class="field-label">Voice B (second speaker)</span>
+            <select id="voice2"></select>
+          </div>
+          <div class="span2">
+            <button class="small ghost" id="sample-btn" type="button">▶ Sample voice</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-row" style="margin-top:18px">
+        <button id="go">Create PPTX draft (without voice)</button>
+        <span class="note">Opens Chat so you can refine each slide before delivering.</span>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="panel" id="chat-card" style="display:none">
+    <div class="panel-head">
+      <span class="n">Chat</span>
+      <h2>Refine each slide</h2>
+      <span class="sub" id="savestate">Per-slide edits</span>
+    </div>
+
+    <div class="chat-meta">
+      <div>
+        <label>Deck title</label>
+        <input type="text" id="deck-title">
+      </div>
+      <div>
+        <label>Subtitle</label>
+        <input type="text" id="deck-subtitle">
+      </div>
+    </div>
+
+    <div class="chat-stream" id="slides"></div>
+    <button class="small ghost" id="add-slide" style="margin-top:12px">＋ Add slide</button>
+
+    <div class="chat-deliver">
+      <button id="build-draft" type="button">Deliver PPTX draft (no voice)</button>
+      <button id="build" type="button">Create Narration</button>
+      <span class="note">Draft = silent PPTX. Narration embeds audio — TTS, or your original recording when the source was audio.</span>
+    </div>
+  </section>
+
+  <!-- keep id for JS that still references review-card -->
+  <div id="review-card" style="display:none" aria-hidden="true"></div>
+  <div id="review-toolbar" style="display:none"></div>
+
+  <section class="panel" id="progress-card" style="display:none">
+    <div class="panel-head">
+      <span class="n">Deliver</span>
+      <h2 id="progress-title">Progress &amp; downloads</h2>
+      <span class="sub">Delivery stage</span>
+    </div>
+    <div class="bar"><div id="bar-fill"></div></div>
+    <div id="status-text"></div>
+    <button class="small warn" id="cancel-btn" type="button">Cancel</button>
+    <div id="result"></div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <section class="panel" id="history-card" style="display:none">
+    <div class="panel-head">
+      <span class="n">History</span>
+      <h2>Past decks</h2>
+      <span class="sub">Last 4 on this Mac</span>
+    </div>
+    <div class="hist-grid" id="history"></div>
+  </section>
+
+  <section class="panel">
+    <details id="settings">
+      <summary>Settings — API keys</summary>
+      <p class="hint-line" id="settings-locked-note" style="display:none;margin-bottom:10px">
+        Keys are set by the server environment (e.g. Railway). Edit them there, not in this form.
+      </p>
+      <label>Anthropic API key (drafting) <span class="keystate" id="ak-state"></span></label>
+      <input type="password" id="ak" placeholder="sk-ant-…">
+      <label>OpenAI API key (voices) <span class="keystate" id="ok-state"></span></label>
+      <input type="password" id="ok" placeholder="sk-…">
+      <label>Gamma API key (designed decks, optional) <span class="keystate" id="gm-state"></span></label>
+      <input type="password" id="gm" placeholder="sk-gamma-…">
+      <button class="small" id="save-keys" style="margin-top:10px">Save keys</button>
+      <span id="save-state" style="font-size:13px;margin-left:10px"></span>
+      <p class="hint-line" style="margin-top:10px" id="settings-local-note">
+        Keys stay in <code>config.json</code> inside the NDS folder on this Mac.
+      </p>
+    </details>
+  </section>
+
+</div>
+
+<script>
+let VOICES = {};
+let jobId = null;
+let deck = null;
+let saveTimer = null;
+let previewVer = 0;
+const player = new Audio();
+let playingBtn = null;
+let toastTimer = null;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function toast(msg, kind) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, 3800);
+}
+
+function stopAudio() {
+  player.pause();
+  player.currentTime = 0;
+  if (playingBtn) { playingBtn.textContent = playingBtn.dataset.playLabel; playingBtn = null; }
+}
+player.addEventListener('ended', stopAudio);
+
+async function playToggle(btn, fetchUrl) {
+  if (playingBtn === btn) { stopAudio(); return false; }
+  stopAudio();
+  btn.dataset.playLabel = btn.dataset.playLabel || btn.textContent;
+  const res = await fetch(fetchUrl);
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || 'Audio failed'); }
+  player.src = URL.createObjectURL(await res.blob());
+  player.play();
+  playingBtn = btn;
+  btn.textContent = '■ Stop';
+  return true;
+}
+
+const $ = id => document.getElementById(id);
+
+function acceptForMode() {
+  const m = $('mode').value;
+  if (m === 'narrate') return ['.pptx'];
+  return ['.docx', '.pdf', '.pptx', '.txt', '.md', '.mp3', '.m4a', '.wav', '.webm', '.ogg'];
+}
+
+function setChosenFile(file) {
+  if (!file) return;
+  const ok = acceptForMode().some(ext => file.name.toLowerCase().endsWith(ext));
+  if (!ok) {
+    toast('That file type isn’t accepted for this mode. Use: ' + acceptForMode().join(' · '), 'error');
+    return;
+  }
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  $('file').files = dt.files;
+  $('drop-label').textContent = file.name;
+  $('drop').classList.add('has-file');
+  const cf = $('cart-file-name');
+  if (cf) { cf.textContent = file.name; cf.classList.add('on'); }
+}
+
+const dropEl = $('drop');
+dropEl.addEventListener('dragenter', e => { e.preventDefault(); dropEl.classList.add('dragover'); });
+dropEl.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dropEl.classList.add('dragover'); });
+dropEl.addEventListener('dragleave', e => {
+  if (!dropEl.contains(e.relatedTarget)) dropEl.classList.remove('dragover');
+});
+dropEl.addEventListener('drop', e => {
+  e.preventDefault();
+  dropEl.classList.remove('dragover');
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) setChosenFile(f);
+});
+dropEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); }
+});
+
+document.querySelectorAll('#how-works .how-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const step = btn.dataset.step;
+    const pop = $('how-pop');
+    if (!pop) return;
+    const already = btn.classList.contains('on') && pop.classList.contains('open');
+    document.querySelectorAll('#how-works .how-btn').forEach(b => {
+      b.classList.remove('on');
+      b.setAttribute('aria-expanded', 'false');
+    });
+    if (already) {
+      pop.classList.remove('open');
+      return;
+    }
+    btn.classList.add('on');
+    btn.setAttribute('aria-expanded', 'true');
+    const info = HOW_STEPS[step];
+    if (!info) return;
+    $('how-pop-title').textContent = info.title;
+    $('how-pop-body').innerHTML = info.body;
+    pop.classList.remove('open');
+    void pop.offsetWidth;
+    pop.classList.add('open');
+  });
+});
+
+const howClose = $('how-pop-close');
+if (howClose) howClose.addEventListener('click', () => {
+  $('how-pop').classList.remove('open');
+  document.querySelectorAll('#how-works .how-btn').forEach(b => {
+    b.classList.remove('on');
+    b.setAttribute('aria-expanded', 'false');
+  });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && howClose) howClose.click();
+});
+
+const HOW_STEPS = {
+  '1': {
+    title: '1 · Upload & choose a mode',
+    body: `<p>Start by dropping a source file onto the stage (or click to browse). Then pick what NDS should do:</p>
+      <ul>
+        <li><strong>NDS design</strong> — Claude drafts the deck; NDS builds NIQ-branded slides you can fully edit.</li>
+        <li><strong>Gamma design</strong> — Gamma designs a richer PPTX; NDS writes and voices the narration.</li>
+        <li><strong>Narrate PPTX</strong> — Keep your existing design; NDS only adds spoken narration.</li>
+        <li><strong>Enhance PPTX</strong> — Keep your design and add imagery, entrance motion, and narration.</li>
+      </ul>
+      <p>Optional: set language, guidance, and design notes before you draft.</p>`
+  },
+  '2': {
+    title: '2 · Review & amend',
+    body: `<p>After drafting, every slide appears as an editable card so you can shape the story before it speaks:</p>
+      <ul>
+        <li><strong>Edit content</strong> — titles, bullets, layouts (Create mode) or read-only slide text (Narrate / Enhance).</li>
+        <li><strong>Edit narration</strong> — the exact words that will be spoken on each slide.</li>
+        <li><strong>Preview audio</strong> — hear one slide with your chosen voice before building.</li>
+        <li><strong>Regenerate</strong> — ask Claude to redraft a slide with an optional instruction.</li>
+        <li><strong>Voice settings</strong> — OpenAI or macOS voices; single narrator or two-voice conversation.</li>
+      </ul>
+      <p>Changes auto-save. Rebuild later only re-voices slides whose narration changed.</p>`
+  },
+  '3': {
+    title: '3 · Build & download',
+    body: `<p>When you build, NDS turns the reviewed plan into a deliverable deck:</p>
+      <ul>
+        <li><strong>Voice each slide</strong> — TTS audio embedded to auto-play in PowerPoint Slide Show.</li>
+        <li><strong>Auto-advance</strong> — each slide advances after its narration finishes.</li>
+        <li><strong>Speaker notes</strong> — narration is stored in the notes pane.</li>
+        <li><strong>Downloads</strong> — narrated PPTX (and MP4 for NDS-designed decks).</li>
+      </ul>
+      <p>Open the file in PowerPoint Slide Show to hear audio and see auto-advance in sync.</p>`
+  }
+};
+
+function syncModeTiles() {
+  const m = $('mode').value;
+  document.querySelectorAll('.mode-tile, .mode-chip').forEach(t => {
+    const on = t.dataset.mode === m;
+    t.classList.toggle('on', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+document.querySelectorAll('.mode-tile').forEach(t => {
+  t.addEventListener('click', () => {
+    $('mode').value = t.dataset.mode;
+    $('mode').dispatchEvent(new Event('change'));
+  });
+});
+
+function syncStyleToggle() {
+  const s = $('narration_style').value;
+  document.querySelectorAll('#style-toggle button').forEach(b => {
+    b.classList.toggle('on', b.dataset.style === s);
+  });
+}
+document.querySelectorAll('#style-toggle button').forEach(b => {
+  b.addEventListener('click', () => {
+    $('narration_style').value = b.dataset.style;
+    $('narration_style').dispatchEvent(new Event('change'));
+    syncStyleToggle();
+  });
+});
+
+async function refreshConfig() {
+  const cfg = await (await fetch('/api/config')).json();
+  VOICES = cfg.voices || {};
+  const prov = $('provider');
+  const prev = prov.value;
+  prov.innerHTML = '';
+  if (VOICES.openai) {
+    const o = document.createElement('option');
+    o.value = 'openai'; o.textContent = 'OpenAI (cloud)';
+    prov.appendChild(o);
+  }
+  if (VOICES.macos) {
+    const o = document.createElement('option');
+    o.value = 'macos'; o.textContent = 'macOS (offline)';
+    prov.appendChild(o);
+  }
+  if ([...prov.options].some(o => o.value === prev)) prov.value = prev;
+  else if (VOICES.openai) prov.value = 'openai';
+  $('ak-state').textContent = cfg.anthropic_key_set ? '✓ saved' : '— not set';
+  $('ak-state').className = 'keystate ' + (cfg.anthropic_key_set ? 'ok' : 'error');
+  $('ok-state').textContent = cfg.openai_key_set ? '✓ saved' : '— not set';
+  $('ok-state').className = 'keystate ' + (cfg.openai_key_set ? 'ok' : 'error');
+  $('gm-state').textContent = cfg.gamma_key_set ? '✓ saved' : '— not set';
+  $('gm-state').className = 'keystate ' + (cfg.gamma_key_set ? 'ok' : '');
+  const locked = !!cfg.settings_locked;
+  $('settings-locked-note').style.display = locked ? 'block' : 'none';
+  $('settings-local-note').style.display = locked ? 'none' : 'block';
+  for (const id of ['ak', 'ok', 'gm', 'save-keys']) $(id).disabled = locked;
+  if (!cfg.anthropic_key_set) $('settings').open = true;
+  fillVoices();
+}
+
+function fillVoices() {
+  const provider = $('provider').value;
+  for (const id of ['voice', 'voice2']) {
+    const sel = $(id);
+    const prev = sel.value;
+    sel.innerHTML = '';
+    (VOICES[provider] || []).forEach(v => {
+      const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+    if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  }
+  if (provider === 'openai' && VOICES.openai?.includes('nova') && $('voice').value === 'alloy') $('voice').value = 'nova';
+  if (provider === 'openai' && VOICES.openai?.includes('onyx') && $('voice2').value === $('voice').value) $('voice2').value = 'onyx';
+  updateStyleUI();
+}
+$('provider').addEventListener('change', fillVoices);
+
+function updateStyleUI() {
+  const conv = $('narration_style').value === 'conversation';
+  $('voice2-wrap').style.display = conv ? 'block' : 'none';
+  $('voice-label').textContent = conv ? 'Voice A (first speaker)' : 'Voice';
+  syncStyleToggle();
+  syncPipelinePreview();
+}
+$('narration_style').addEventListener('change', updateStyleUI);
+
+function updateModeUI() {
+  const m = $('mode').value === 'enhance' ? 'narrate' : $('mode').value;
+  if ($('mode').value === 'enhance') $('mode').value = 'narrate';
+  const locked = m === 'narrate';
+  $('template-wrap').style.display = m === 'generate' ? 'block' : 'none';
+  $('design-notes-wrap').style.display = m === 'narrate' ? 'none' : 'block';
+  $('file').accept = locked ? '.pptx' : '.docx,.pdf,.pptx,.txt,.md,.mp3,.m4a,.wav,.webm,.ogg,audio/*';
+  $('drop-hint').textContent =
+    m === 'narrate' ? 'Upload a .pptx with no narration — NDS writes a script per slide from the page content'
+    : m === 'gamma' ? 'Document or audio — Gamma designs; audio keeps the original voice'
+    : 'Document, paste, or audio (.mp3 / .m4a / .wav)';
+  $('go').textContent = m === 'narrate' ? 'Create narration scripts (no voice yet)'
+    : m === 'gamma' ? 'Create PPTX draft with Gamma (no voice)'
+    : 'Create PPTX draft (without voice)';
+  syncModeTiles();
+  syncCartPills();
+  syncPipelinePreview();
+}
+
+function syncCartPills() {
+  const accepted = acceptForMode();
+  const pasteOk = $('mode').value !== 'narrate';
+  document.querySelectorAll('.cart-pill[data-ext]').forEach(p => {
+    const ext = p.dataset.ext;
+    const on = ext === 'paste' ? pasteOk : accepted.includes(ext);
+    p.classList.toggle('on', on);
+    p.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  const chips = $('accepted-chips');
+  if (chips) {
+    const parts = accepted.map(ext =>
+      '<span class="chip teal-on">' + escapeHtml(ext.replace('.', '').toUpperCase()) + '</span>'
+    );
+    if (pasteOk) parts.push('<span class="chip teal-on">PASTE</span>');
+    chips.innerHTML = parts.join('');
+  }
+  const pasteWrap = $('paste-wrap');
+  if (pasteWrap) pasteWrap.classList.toggle('locked', !pasteOk);
+}
+
+function syncPipelinePreview() {
+  const m = $('mode').value;
+  const style = $('narration_style').value;
+  const lang = $('language').value;
+  const tpl = $('template').value;
+  const logic = {
+    generate: `const deck = NDS.draft(source, { template: "${tpl}", lang: "${lang}" });`,
+    gamma: `const deck = Gamma.design(source).then(NDS.narrate);`,
+    narrate: `const scripts = NDS.writeNarration(pptx.slides); // one script per page`,
+  };
+  const result = {
+    generate: 'NIQ slides + narration script',
+    gamma: 'Gamma PPTX + narration',
+    narrate: 'Your slides + narration script per page',
+  };
+  const el = $('pipe-logic');
+  if (el) el.textContent = logic[m] || logic.generate;
+  const out = $('pipe-out-label');
+  if (out) out.textContent = result[m] || result.generate;
+  const voiceLogic = $('voice-logic');
+  if (voiceLogic) {
+    voiceLogic.textContent = style === 'conversation'
+      ? 'Alex + Sam dialogue · two TTS voices · auto-advance'
+      : 'Single narrator · one TTS voice · auto-advance';
+  }
+  document.querySelectorAll('.mode-chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.mode === m);
+  });
+}
+$('mode').addEventListener('change', updateModeUI);
+$('language').addEventListener('change', syncPipelinePreview);
+$('template').addEventListener('change', syncPipelinePreview);
+document.querySelectorAll('.mode-chip').forEach(c => {
+  c.addEventListener('click', () => {
+    $('mode').value = c.dataset.mode;
+    $('mode').dispatchEvent(new Event('change'));
+  });
+});
+
+
+$('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) {
+    $('drop-label').textContent = f.name;
+    $('drop').classList.add('has-file');
+    const cf = $('cart-file-name');
+    if (cf) { cf.textContent = f.name; cf.classList.add('on'); }
+  }
+});
+
+$('source-paste')?.addEventListener('input', () => {
+  const pasted = ($('source-paste').value || '').trim();
+  const cf = $('cart-file-name');
+  if (!cf) return;
+  if ($('file').files[0]) return; // file wins
+  if (pasted) {
+    const n = pasted.split(/\s+/).filter(Boolean).length;
+    cf.textContent = `Pasted text (~${n} words)`;
+    cf.classList.add('on');
+  } else {
+    cf.textContent = 'No source yet';
+    cf.classList.remove('on');
+  }
+});
+
+$('save-keys').addEventListener('click', async () => {
+  const fd = new FormData();
+  fd.append('anthropic_api_key', $('ak').value);
+  fd.append('openai_api_key', $('ok').value);
+  fd.append('gamma_api_key', $('gm').value);
+  await fetch('/api/settings', { method: 'POST', body: fd });
+  $('ak').value = ''; $('ok').value = ''; $('gm').value = '';
+  $('save-state').textContent = 'Saved.';
+  setTimeout(() => $('save-state').textContent = '', 2500);
+  refreshConfig();
+});
+
+$('go').addEventListener('click', async () => {
+  const f = $('file').files[0];
+  const pasted = ($('source-paste')?.value || '').trim();
+  const m = $('mode').value;
+  if (['narrate'].includes(m)) {
+    if (!f) { toast('Upload a .pptx for this mode.', 'error'); return; }
+  } else if (!f && !pasted) {
+    toast('Upload a document or paste source text.', 'error');
+    return;
+  }
+  const fd = new FormData();
+  if (f) fd.append('file', f);
+  if (pasted && m !== 'narrate') fd.append('source_text', pasted);
+  fd.append('language', $('language').value);
+  fd.append('guidance', $('guidance').value);
+  fd.append('template', $('template').value);
+  fd.append('provider', $('provider').value || 'openai');
+  fd.append('voice', $('voice').value || 'nova');
+  fd.append('voice2', $('voice2').value || '');
+  fd.append('narration_style', $('narration_style').value);
+  fd.append('mode', $('mode').value);
+  fd.append('design_notes', $('design_notes').value);
+  $('go').disabled = true;
+  showProgress('Drafting…', true);
+  const res = await fetch('/api/draft', { method: 'POST', body: fd });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    setStatus(0, err.detail || 'Request failed', true);
+    setCancelVisible(false);
+    $('go').disabled = false;
+    return;
+  }
+  jobId = (await res.json()).job_id;
+  history.replaceState(null, '', '?job=' + jobId);
+  poll();
+});
+
+function showProgress(title, cancellable) {
+  $('progress-card').style.display = 'block';
+  $('progress-title').textContent = title;
+  $('result').innerHTML = '';
+  setStatus(0, 'Starting…', false);
+  setCancelVisible(!!cancellable);
+  $('progress-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function setCancelVisible(on) {
+  $('cancel-btn').style.display = on ? 'inline-block' : 'none';
+  $('cancel-btn').disabled = false;
+  $('cancel-btn').textContent = 'Cancel';
+}
+
+$('cancel-btn').addEventListener('click', async () => {
+  if (!jobId) return;
+  $('cancel-btn').disabled = true;
+  $('cancel-btn').textContent = 'Cancelling…';
+  const res = await fetch('/api/jobs/' + jobId + '/cancel', { method: 'POST' });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    toast(e.detail || 'Could not cancel', 'error');
+    $('cancel-btn').disabled = false;
+    $('cancel-btn').textContent = 'Cancel';
+  }
+});
+
+function setStatus(pct, text, isError, eta) {
+  $('bar-fill').style.width = pct + '%';
+  const el = $('status-text');
+  let msg = text;
+  if (!isError && eta) {
+    msg += eta >= 90 ? `   (≈ ${Math.round(eta / 60)} min left)` : `   (≈ ${eta}s left)`;
+  }
+  el.textContent = msg;
+  el.className = isError ? 'error' : '';
+}
+
+function applyOptions(o) {
+  if (!o) return;
+  if (o.provider) $('provider').value = o.provider;
+  if (o.narration_style) $('narration_style').value = o.narration_style;
+  if (o.mode) { $('mode').value = o.mode; updateModeUI(); }
+  fillVoices();
+  if (o.voice) $('voice').value = o.voice;
+  if (o.voice2) $('voice2').value = o.voice2;
+  if (o.template) $('template').value = o.template;
+  if (o.design_notes) $('design_notes').value = o.design_notes;
+  syncStyleToggle();
+  syncModeTiles();
+}
+
+async function poll() {
+  const job = await (await fetch('/api/jobs/' + jobId)).json();
+  const busy = ['queued', 'drafting', 'building', 'rendering'].includes(job.status);
+  setCancelVisible(busy);
+  if (job.status === 'error' || job.status === 'cancelled') {
+    setStatus(job.progress || 0, (job.status === 'cancelled' ? 'Cancelled' : 'Failed') +
+      (job.error ? ': ' + job.error : ''), true);
+    setCancelVisible(false);
+    $('go').disabled = false; $('build').disabled = false;
+    if ($('build-draft')) $('build-draft').disabled = false;
+    $('build').textContent = 'Create Narration';
+    if ($('build-draft')) $('build-draft').textContent = 'Deliver PPTX draft (no voice)';
+    loadHistory();
+    return;
+  }
+  setStatus(job.progress, job.step, false, job.eta_seconds);
+  if (job.status === 'review') {
+    setCancelVisible(false);
+    $('go').disabled = false;
+    deck = job.deck;
+    applyOptions(job.options);
+    renderReview();
+    return;
+  }
+  if (job.status === 'done') {
+    setCancelVisible(false);
+    $('build').disabled = false;
+    if ($('build-draft')) $('build-draft').disabled = false;
+    $('build').textContent = 'Create Narration';
+    if ($('build-draft')) $('build-draft').textContent = 'Deliver PPTX draft (no voice)';
+    deck = job.deck;
+    applyOptions(job.options);
+    renderReview(false);
+    const narrate = job.options?.mode === 'narrate' || job.options?.designed_by === 'gamma';
+    const voiced = job.last_build_voiced !== false && job.options?.with_voice !== false;
+    let html = '';
+    if (job.file) {
+      const label = job.last_build_voiced === false ? '⬇ PPTX draft (no voice)'
+        : (voiced ? '⬇ Narrated PPTX' : '⬇ PPTX');
+      html += '<a class="download" href="/api/jobs/' + jobId + '/download">' + label + '</a> ';
+    }
+    (job.extra_files || []).forEach(e => {
+      html += '<a class="download" href="/api/jobs/' + jobId + '/download?name=' +
+        encodeURIComponent(e.name) + '">⬇ ' + escapeHtml(e.label) + '</a> ';
+    });
+    if (job.video) html += '<a class="download" href="/api/jobs/' + jobId + '/video">⬇ MP4 video</a> ';
+    if (job.file && !job.video && !narrate && job.last_build_voiced !== false)
+      html += '<button class="small ghost" style="margin-left:8px" onclick="exportVideo()">Export MP4 video</button>';
+    html += '<div class="hint-line" style="margin-top:8px">' +
+      (job.last_build_voiced === false
+        ? 'Silent draft ready. Keep editing in Chat, or press Create Narration to add voice.'
+        : narrate ? 'Your original design is untouched — narration scripts (and audio, if built) were added.'
+               : 'You can keep amending in Chat and rebuild — only changed slides are re-voiced.') + '</div>';
+    $('result').innerHTML = html;
+    loadHistory();
+    return;
+  }
+  setTimeout(poll, 1500);
+}
+
+function renderReview(scroll = true) {
+  const card = $('chat-card') || $('review-card');
+  card.style.display = 'block';
+  $('deck-title').value = deck.deck_title || '';
+  $('deck-subtitle').value = deck.subtitle || '';
+  $('add-slide').style.display = $('mode').value === 'narrate' ? 'none' : 'inline-block';
+  const holder = $('slides');
+  holder.innerHTML = '';
+  deck.slides.forEach((s, i) => holder.appendChild(slideCard(s, i)));
+  if (scroll) card.scrollIntoView({ behavior: 'smooth' });
+}
+
+const LAYOUTS = ['title','section','content','cards','stats','compare','closing'];
+
+function contentFields(s) {
+  if (s.layout === 'cards') {
+    const v = (s.cards || []).map(x => `${x.title} :: ${x.desc}`).join('\n');
+    return { label: 'Cards (one per line — Title :: description)', rows: 6, value: v, kind: 'cards' };
+  }
+  if (s.layout === 'stats') {
+    const v = (s.stats || []).map(x => `${x.value} :: ${x.label}`).join('\n');
+    return { label: 'Stats (one per line — Value :: label)', rows: 6, value: v, kind: 'stats' };
+  }
+  if (s.layout === 'compare') {
+    const fmt = side => side ? [side.heading, ...(side.items || [])].join('\n') : '';
+    return { kind: 'compare', left: fmt(s.compare_left), right: fmt(s.compare_right) };
+  }
+  return { label: 'Bullets (one per line)', rows: 5, value: (s.bullets || []).join('\n'), kind: 'bullets' };
+}
+
+function slideCard(s, i) {
+  const narrate = $('mode').value === 'narrate';
+  const div = document.createElement('div');
+  div.className = 'chat-slide';
+  const cf = contentFields(s);
+  if (narrate) {
+    const bulletsHtml = (s.bullets || []).length
+      ? (s.bullets || []).map(b => '• ' + escapeHtml(b)).join('<br>')
+      : '<em>(no text on this slide)</em>';
+    div.innerHTML = `
+      <div class="head">
+        <div class="num">${i + 1}</div>
+        <strong style="font-size:16px;color:var(--deep)">${escapeHtml(s.title || 'Slide ' + (i + 1))}</strong>
+        <div class="spacer"></div>
+        <span style="font-size:11px;color:var(--muted)">design locked</span>
+      </div>
+      <div class="chat-body">
+        <div>
+          <label>Slide content (read-only)</label>
+          <div style="font-size:14px;color:var(--muted);background:#f4f6fb;border-radius:12px;padding:16px;min-height:120px;line-height:1.5">
+            ${bulletsHtml}
+          </div>
+        </div>
+        <div class="chat-fields">
+          <label>Narration script (spoken later)</label>
+          <textarea class="f-narration" rows="10"></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="small ghost preview">▶ Preview audio</button>
+        <button class="small ghost regen">↻ Regenerate…</button>
+        <span class="hint" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="regenrow">
+        <input type="text" class="f-instruction" placeholder="Optional instruction, e.g. 'more formal' or 'mention the deadline'">
+        <button class="small regen-go">Go</button>
+      </div>`;
+    div.querySelector('.f-narration').value = s.narration || '';
+    div.querySelector('.f-narration').addEventListener('input', () => {
+      s.narration = div.querySelector('.f-narration').value; queueSave();
+    });
+    div.querySelector('.preview').onclick = () => previewAudio(i, div);
+    div.querySelector('.regen').onclick = () => div.querySelector('.regenrow').classList.toggle('open');
+    div.querySelector('.regen-go').onclick = () => regenerate(i, div);
+    return div;
+  }
+  const contentHtml = cf.kind === 'compare'
+    ? `<label>Left panel (first line = heading, then items)</label>
+       <textarea class="f-cmp-left" rows="4"></textarea>
+       <label>Right panel (first line = heading, then items)</label>
+       <textarea class="f-cmp-right" rows="4"></textarea>`
+    : `<label>${escapeHtml(cf.label)}</label>
+       <textarea class="f-content" rows="${cf.rows}"></textarea>`;
+  div.innerHTML = `
+    <div class="head">
+      <div class="num">${i + 1}</div>
+      <select class="layout">
+        ${LAYOUTS.map(l => `<option ${l === s.layout ? 'selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <div class="spacer"></div>
+      <button class="iconbtn up" title="Move up">↑</button>
+      <button class="iconbtn down" title="Move down">↓</button>
+      <button class="iconbtn del danger" title="Delete slide">Delete</button>
+    </div>
+    <div class="chat-body">
+      <div>
+        <img class="slide-thumb loading" alt="Slide ${i + 1} preview" data-index="${i}">
+      </div>
+      <div class="chat-fields">
+        <label>Slide title</label>
+        <input type="text" class="f-title" value="">
+        <label>Kicker line (shown under the title)</label>
+        <input type="text" class="f-kicker" value="">
+        ${contentHtml}
+        <label>Narration script (spoken when you create narration)</label>
+        <textarea class="f-narration" rows="8"></textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="small ghost preview">▶ Preview audio</button>
+      <button class="small ghost regen">↻ Regenerate…</button>
+      <span class="hint" style="font-size:12px;color:var(--muted)"></span>
+    </div>
+    <div class="regenrow">
+      <input type="text" class="f-instruction" placeholder="Optional instruction, e.g. 'shorter and punchier' or 'turn this into a stats slide'">
+      <button class="small regen-go">Go</button>
+    </div>`;
+
+  div.querySelector('.f-title').value = s.title || '';
+  div.querySelector('.f-kicker').value = s.subtitle || '';
+  div.querySelector('.f-narration').value = s.narration || '';
+  if (cf.kind === 'compare') {
+    div.querySelector('.f-cmp-left').value = cf.left;
+    div.querySelector('.f-cmp-right').value = cf.right;
+  } else {
+    div.querySelector('.f-content').value = cf.value;
+  }
+
+  const thumb = div.querySelector('.slide-thumb');
+  thumb.onload = () => thumb.classList.remove('loading');
+  thumb.onerror = () => { thumb.style.display = 'none'; };
+  thumb.src = `/api/jobs/${jobId}/slides/${i}/preview.png?v=${previewVer}`;
+
+  const parseSide = txt => {
+    const lines = txt.split('\n').map(x => x.trim()).filter(Boolean);
+    return lines.length ? { heading: lines[0], items: lines.slice(1) } : null;
+  };
+  const parsePairs = txt => txt.split('\n').map(x => x.trim()).filter(Boolean).map(line => {
+    const [a, ...rest] = line.split('::');
+    return [a.trim(), rest.join('::').trim()];
+  });
+
+  const sync = () => {
+    s.title = div.querySelector('.f-title').value;
+    s.subtitle = div.querySelector('.f-kicker').value || null;
+    s.narration = div.querySelector('.f-narration').value;
+    if (cf.kind === 'compare') {
+      s.compare_left = parseSide(div.querySelector('.f-cmp-left').value);
+      s.compare_right = parseSide(div.querySelector('.f-cmp-right').value);
+    } else if (cf.kind === 'cards') {
+      s.cards = parsePairs(div.querySelector('.f-content').value).map(([t, d]) => ({ title: t, desc: d }));
+    } else if (cf.kind === 'stats') {
+      s.stats = parsePairs(div.querySelector('.f-content').value).map(([v, l]) => ({ value: v, label: l }));
+    } else {
+      s.bullets = div.querySelector('.f-content').value.split('\n').map(x => x.trim()).filter(Boolean);
+    }
+    queueSave();
+  };
+  div.querySelectorAll('input,textarea').forEach(el => el.addEventListener('input', sync));
+  div.querySelector('.layout').addEventListener('change', () => {
+    s.layout = div.querySelector('.layout').value;
+    queueSave();
+    renderReview(false);
+  });
+
+  div.querySelector('.up').onclick = () => move(i, -1);
+  div.querySelector('.down').onclick = () => move(i, +1);
+  div.querySelector('.del').onclick = () => {
+    if (confirm('Delete slide ' + (i + 1) + '?')) {
+      deck.slides.splice(i, 1); queueSave(); renderReview(false);
+    }
+  };
+  div.querySelector('.preview').onclick = () => previewAudio(i, div);
+  div.querySelector('.regen').onclick = () => div.querySelector('.regenrow').classList.toggle('open');
+  div.querySelector('.regen-go').onclick = () => regenerate(i, div);
+  return div;
+}
+
+function move(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= deck.slides.length) return;
+  [deck.slides[i], deck.slides[j]] = [deck.slides[j], deck.slides[i]];
+  queueSave(); renderReview(false);
+}
+
+$('add-slide').addEventListener('click', () => {
+  deck.slides.push({ layout: 'content', title: 'New slide', subtitle: null, bullets: [], narration: '' });
+  queueSave(); renderReview(false);
+});
+
+$('deck-title').addEventListener('input', () => { deck.deck_title = $('deck-title').value; queueSave(); });
+$('deck-subtitle').addEventListener('input', () => { deck.subtitle = $('deck-subtitle').value; queueSave(); });
+
+function queueSave() {
+  $('savestate').textContent = 'Saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDeck, 600);
+}
+
+async function saveDeck() {
+  clearTimeout(saveTimer);
+  if (!jobId || !deck) return;
+  const res = await fetch(`/api/jobs/${jobId}/deck`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(deck),
+  });
+  $('savestate').textContent = res.ok ? 'All changes saved' : 'Save failed';
+  if (res.ok && $('mode').value !== 'narrate') {
+    previewVer += 1;
+    document.querySelectorAll('.slide-thumb').forEach(img => {
+      const idx = img.dataset.index;
+      img.classList.add('loading');
+      img.src = `/api/jobs/${jobId}/slides/${idx}/preview.png?v=${previewVer}`;
+    });
+  }
+}
+
+async function previewAudio(i, div) {
+  await saveDeck();
+  const btn = div.querySelector('.preview');
+  const hint = div.querySelector('.hint');
+  const url = `/api/jobs/${jobId}/audio/${i}?provider=${$('provider').value}&voice=${$('voice').value}` +
+              `&voice2=${$('voice2').value}&narration_style=${$('narration_style').value}&t=${Date.now()}`;
+  try {
+    const wasPlaying = playingBtn === btn;
+    if (!wasPlaying) hint.textContent = 'Generating audio…';
+    const started = await playToggle(btn, url);
+    hint.textContent = started ? 'Playing — slide ' + (i + 1) : '';
+  } catch (e) {
+    hint.textContent = e.message;
+  }
+}
+
+async function regenerate(i, div) {
+  await saveDeck();
+  div.classList.add('busy');
+  const hint = div.querySelector('.hint');
+  hint.textContent = 'Asking Claude to redraft this slide…';
+  const res = await fetch(`/api/jobs/${jobId}/slides/${i}/regenerate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction: div.querySelector('.f-instruction').value }),
+  });
+  div.classList.remove('busy');
+  if (!res.ok) { const e = await res.json().catch(() => ({})); hint.textContent = e.detail || 'Redraft failed'; return; }
+  deck.slides[i] = await res.json();
+  renderReview(false);
+}
+
+$('sample-btn').addEventListener('click', async () => {
+  try {
+    await playToggle($('sample-btn'), `/api/voices/${$('provider').value}/${$('voice').value}/sample`);
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+function buildPayload(withVoice = true) {
+  return {
+    provider: $('provider').value, voice: $('voice').value, voice2: $('voice2').value,
+    narration_style: $('narration_style').value, template: $('template').value,
+    with_voice: !!withVoice,
+  };
+}
+
+async function startBuild(withVoice) {
+  await saveDeck();
+  const btn = withVoice ? $('build') : $('build-draft');
+  const other = withVoice ? $('build-draft') : $('build');
+  btn.disabled = true;
+  if (other) other.disabled = true;
+  showProgress(withVoice ? 'Creating narration…' : 'Building PPTX draft…', true);
+  const res = await fetch(`/api/jobs/${jobId}/build`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildPayload(withVoice)),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    setStatus(0, e.detail || 'Build failed to start', true);
+    setCancelVisible(false);
+    btn.disabled = false;
+    if (other) other.disabled = false;
+    return;
+  }
+  poll();
+}
+
+$('build').addEventListener('click', () => startBuild(true));
+$('build-draft').addEventListener('click', () => startBuild(false));
+
+async function exportVideo() {
+  await saveDeck();
+  showProgress('Rendering MP4 video…', true);
+  const res = await fetch(`/api/jobs/${jobId}/export-video`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildPayload(true)),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    setStatus(0, e.detail || 'Video export failed to start', true);
+    setCancelVisible(false);
+    return;
+  }
+  poll();
+}
+
+const MODE_LABEL = { generate: 'NDS design', gamma: 'Gamma', narrate: 'Narration scripts' };
+const STATUS_LABEL = { review: 'draft', done: 'built', error: 'failed', cancelled: 'cancelled',
+                       drafting: 'drafting', building: 'building', rendering: 'rendering', queued: 'queued' };
+
+async function loadHistory() {
+  const items = await (await fetch('/api/jobs')).json();
+  if (!items.length) { $('history-card').style.display = 'none'; return; }
+  $('history-card').style.display = 'block';
+  $('history').innerHTML = '';
+  items.forEach(j => {
+    const when = new Date(j.updated * 1000).toLocaleString();
+    const badge = STATUS_LABEL[j.status] || j.status;
+    const mode = MODE_LABEL[j.mode] || j.mode || '';
+    const row = document.createElement('div');
+    row.className = 'hist-row';
+    row.innerHTML = `
+      <span style="flex:1"><strong>${escapeHtml(j.title)}</strong></span>
+      <span class="meta">${escapeHtml(mode)}${mode ? ' · ' : ''}${escapeHtml(badge)} · ${escapeHtml(when)}</span>
+      <span class="links"></span>`;
+    const links = row.querySelector('.links');
+    const open = document.createElement('a');
+    open.href = '/?job=' + encodeURIComponent(j.id);
+    open.textContent = 'open';
+    links.appendChild(open);
+    if (j.has_pptx) {
+      const a = document.createElement('a');
+      a.href = '/api/jobs/' + j.id + '/download';
+      a.textContent = 'pptx';
+      links.appendChild(document.createTextNode('·'));
+      links.appendChild(a);
+    }
+    if (j.has_video) {
+      const a = document.createElement('a');
+      a.href = '/api/jobs/' + j.id + '/video';
+      a.textContent = 'mp4';
+      links.appendChild(document.createTextNode('·'));
+      links.appendChild(a);
+    }
+    const busy = ['queued', 'drafting', 'building', 'rendering'].includes(j.status);
+    if (busy) {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'small warn'; btn.textContent = 'Cancel';
+      btn.onclick = async () => {
+        btn.disabled = true;
+        const res = await fetch('/api/jobs/' + j.id + '/cancel', { method: 'POST' });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          toast(e.detail || 'Could not cancel', 'error');
+          btn.disabled = false;
+          return;
+        }
+        toast('Cancel requested', 'ok');
+        setTimeout(loadHistory, 800);
+      };
+      links.appendChild(btn);
+    } else {
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'small warn'; btn.textContent = 'Delete';
+      btn.onclick = async () => {
+        if (!confirm('Delete this past deck and its files?')) return;
+        btn.disabled = true;
+        const res = await fetch('/api/jobs/' + j.id, { method: 'DELETE' });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          toast(e.detail || 'Delete failed', 'error');
+          btn.disabled = false;
+          return;
+        }
+        if (jobId === j.id) {
+          jobId = null;
+          history.replaceState(null, '', '/');
+        }
+        toast('Deleted', 'ok');
+        loadHistory();
+      };
+      links.appendChild(btn);
+    }
+    $('history').appendChild(row);
+  });
+}
+
+(async function init() {
+  await refreshConfig();
+  updateModeUI();
+  updateStyleUI();
+  loadHistory();
+  const q = new URLSearchParams(location.search).get('job');
+  if (q) {
+    jobId = q;
+    try {
+      const job = await (await fetch('/api/jobs/' + jobId)).json();
+      if (job.status) { showProgress('Progress', ['queued','drafting','building','rendering'].includes(job.status)); poll(); }
+    } catch { /* stale link — ignore */ }
+  }
+})();
+</script>
+</body>
+</html>
