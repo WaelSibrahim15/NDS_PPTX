@@ -83,6 +83,11 @@ narrate/enhance modes, where the design is locked), the narration text, per-slid
 (OpenAI cloud / macOS offline), voice A/B and a sample player sit in the toolbar.
 Edits auto-save; rebuilds only re-voice slides whose narration changed.
 
+Below the slide cards, **Redraft whole deck** throws the current draft away and asks
+Claude for a fresh one from the same source, with an optional instruction (e.g. "fewer
+slides, more card layouts"). The previous draft is kept in `deck_previous.json` so
+**Undo last redraft** can restore it once.
+
 ---
 
 ## Architecture

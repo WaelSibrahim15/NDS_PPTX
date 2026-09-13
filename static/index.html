@@ -770,6 +770,19 @@
     border-top: 1px solid var(--line);
   }
   .chat-deliver .note { flex: 1; min-width: 180px; }
+  .chat-redraft {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+  }
+  .chat-redraft .lbl { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .chat-redraft input[type=text] { flex: 1; min-width: 220px; }
+  .chat-redraft .note { flex-basis: 100%; }
   button#go, button#build-draft {
     background: var(--deep);
   }
@@ -943,6 +956,15 @@
 
     <div class="chat-stream" id="slides"></div>
     <button class="small ghost" id="add-slide" style="margin-top:12px">＋ Add slide</button>
+
+    <div class="chat-redraft">
+      <span class="lbl">Not happy with the draft?</span>
+      <input type="text" id="redraft-instruction"
+             placeholder="Optional instruction — e.g. fewer slides, more card layouts, punchier titles">
+      <button class="small" id="redraft-go" type="button">↻ Redraft whole deck</button>
+      <button class="small ghost" id="redraft-undo" type="button" style="display:none">Undo last redraft</button>
+      <span class="note">Replaces every slide with a fresh draft from the same source. Per-slide edits are lost — you can undo once.</span>
+    </div>
 
     <div class="chat-deliver">
       <button id="build-draft" type="button">Deliver PPTX draft (no voice)</button>
@@ -1463,8 +1485,10 @@ async function poll() {
   if (job.status === 'review') {
     setCancelVisible(false);
     $('go').disabled = false;
+    if (job.error) setStatus(100, job.step + ': ' + job.error, true);
     deck = job.deck;
     applyOptions(job.options);
+    syncRedraftUndo(job);
     renderReview();
     return;
   }
@@ -1476,6 +1500,7 @@ async function poll() {
     if ($('build-draft')) $('build-draft').textContent = 'Deliver PPTX draft (no voice)';
     deck = job.deck;
     applyOptions(job.options);
+    syncRedraftUndo(job);
     renderReview(false);
     const narrate = job.options?.mode === 'narrate';
     const voiced = job.last_build_voiced !== false && job.options?.with_voice !== false;
@@ -1749,6 +1774,42 @@ async function regenerate(i, div) {
   if (!res.ok) { const e = await res.json().catch(() => ({})); hint.textContent = e.detail || 'Redraft failed'; return; }
   deck.slides[i] = await res.json();
   renderReview(false);
+}
+
+$('redraft-go').addEventListener('click', async () => {
+  if (!jobId) return;
+  if (!confirm('Replace every slide with a fresh draft? Your per-slide edits will be lost (you can undo once).')) return;
+  await saveDeck();
+  $('redraft-go').disabled = true;
+  showProgress('Redrafting…', true);
+  const res = await fetch(`/api/jobs/${jobId}/redraft`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction: $('redraft-instruction').value }),
+  });
+  $('redraft-go').disabled = false;
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    setStatus(0, e.detail || 'Redraft failed', true);
+    setCancelVisible(false);
+    return;
+  }
+  poll();
+});
+
+$('redraft-undo').addEventListener('click', async () => {
+  if (!jobId) return;
+  $('redraft-undo').disabled = true;
+  const res = await fetch(`/api/jobs/${jobId}/redraft/undo`, { method: 'POST' });
+  $('redraft-undo').disabled = false;
+  if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.detail || 'Undo failed', 'error'); return; }
+  deck = await res.json();
+  $('redraft-undo').style.display = 'none';
+  renderReview(false);
+  toast('Previous draft restored', 'ok');
+});
+
+function syncRedraftUndo(job) {
+  $('redraft-undo').style.display = job.can_undo_redraft ? '' : 'none';
 }
 
 $('sample-btn').addEventListener('click', async () => {

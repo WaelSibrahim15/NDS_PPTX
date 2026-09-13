@@ -47,6 +47,14 @@ ENV_KEY_MAP = {
     "openai_api_key": "OPENAI_API_KEY",
 }
 
+AUDIO_GUIDANCE = (
+    "SOURCE IS A SPOKEN RECORDING TRANSCRIPT. Keep slide order chronological "
+    "with the talk. Write each slide's narration so it closely follows what the "
+    "speaker said in that section (paraphrase lightly for clarity, do not invent "
+    "new topics). The original audio will be split onto the slides — do not write "
+    "stage directions about audio."
+)
+
 SAMPLE_TEXT = {
     "openai": "Hello! This is how I sound. I will be the narrator of your presentation.",
     "macos": "Hello! This is how I sound. I will be the narrator of your presentation.",
@@ -337,49 +345,11 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
             text_path = job_dir / "source_from_audio.txt"
             text_path.write_text(transcript["text"], encoding="utf-8")
             src_path = text_path
-            guidance = (
-                (guidance + "\n" if guidance else "")
-                + "SOURCE IS A SPOKEN RECORDING TRANSCRIPT. Keep slide order chronological "
-                  "with the talk. Write each slide's narration so it closely follows what the "
-                  "speaker said in that section (paraphrase lightly for clarity, do not invent "
-                  "new topics). The original audio will be split onto the slides — do not write "
-                  "stage directions about audio."
-            ).strip()
+            guidance = ((guidance + "\n" if guidance else "") + AUDIO_GUIDANCE).strip()
             job.update(step="Transcript ready — drafting slides…", progress=22, eta_seconds=40)
 
         _check_cancel(job_id)
-        if opts.get("mode") == "narrate":
-            slides = extract.extract_slides(src_path)
-            (job_dir / "source_text.txt").write_text(
-                "\n\n".join(f"--- Slide {s['index']} ---\n" + "\n".join(s["texts"]) for s in slides)
-            )
-            job.update(step="Writing narration scripts from each slide…", progress=30,
-                       eta_seconds=20 + 2 * len(slides))
-            narrations = draft_narration_for_existing(
-                slides, api_key=cfg["anthropic_api_key"], language=opts["language"],
-                guidance=guidance or opts.get("guidance", ""),
-                narration_style=opts.get("narration_style", "single"),
-            )
-            first_title = (slides[0]["texts"][0].splitlines()[0][:60]
-                           if slides and slides[0]["texts"] else "")
-            plan = DeckPlan(
-                deck_title=first_title or Path(job.get("source_name") or "Narrated deck").stem,
-                subtitle="Narration scripts from slide content",
-                slides=[
-                    Slide(layout="content",
-                          title=(s["texts"][0].splitlines()[0][:80] if s["texts"] else f"Slide {s['index']}"),
-                          bullets=[t[:120] for t in s["texts"][1:5]],
-                          narration=narrations[i])
-                    for i, s in enumerate(slides)
-                ],
-            )
-        else:
-            text = extract.extract_text(src_path)
-            (job_dir / "source_text.txt").write_text(text)
-            job.update(step="Drafting slides and narration with Claude…", progress=30, eta_seconds=35)
-            plan = draft_deck(text, api_key=cfg["anthropic_api_key"],
-                              language=opts["language"], guidance=guidance,
-                              narration_style=opts.get("narration_style", "single"))
+        plan = _produce_plan(job_id, src_path, cfg, guidance)
         _check_cancel(job_id)
         _save_plan(job_id, plan)
         job.update(status="review", step="Draft ready — review and amend below",
@@ -390,6 +360,132 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
     except Exception as exc:
         job.update(status="error", step="Failed", error=str(exc))
     _persist(job_id)
+
+
+def _produce_plan(job_id: str, src_path: Path, cfg: dict, guidance: str) -> DeckPlan:
+    """Run the Claude drafting step for a job: narration scripts for an uploaded
+    deck (narrate mode) or a full deck plan from the extracted text (generate mode)."""
+    job = _jobs[job_id]
+    job_dir = _job_dir(job_id)
+    opts = job["options"]
+    if opts.get("mode") == "narrate":
+        slides = extract.extract_slides(src_path)
+        (job_dir / "source_text.txt").write_text(
+            "\n\n".join(f"--- Slide {s['index']} ---\n" + "\n".join(s["texts"]) for s in slides)
+        )
+        job.update(step="Writing narration scripts from each slide…", progress=30,
+                   eta_seconds=20 + 2 * len(slides))
+        narrations = draft_narration_for_existing(
+            slides, api_key=cfg["anthropic_api_key"], language=opts["language"],
+            guidance=guidance or opts.get("guidance", ""),
+            narration_style=opts.get("narration_style", "single"),
+        )
+        first_title = (slides[0]["texts"][0].splitlines()[0][:60]
+                       if slides and slides[0]["texts"] else "")
+        return DeckPlan(
+            deck_title=first_title or Path(job.get("source_name") or "Narrated deck").stem,
+            subtitle="Narration scripts from slide content",
+            slides=[
+                Slide(layout="content",
+                      title=(s["texts"][0].splitlines()[0][:80] if s["texts"] else f"Slide {s['index']}"),
+                      bullets=[t[:120] for t in s["texts"][1:5]],
+                      narration=narrations[i])
+                for i, s in enumerate(slides)
+            ],
+        )
+    text = extract.extract_text(src_path)
+    (job_dir / "source_text.txt").write_text(text)
+    job.update(step="Drafting slides and narration with Claude…", progress=30, eta_seconds=35)
+    return draft_deck(text, api_key=cfg["anthropic_api_key"],
+                      language=opts["language"], guidance=guidance,
+                      narration_style=opts.get("narration_style", "single"))
+
+
+def _redraft_source(job_id: str) -> Path:
+    """The file the drafter should read again for a whole-deck redraft."""
+    job_dir = _job_dir(job_id)
+    opts = _jobs[job_id]["options"]
+    if opts.get("from_audio"):
+        return job_dir / "source_from_audio.txt"
+    if opts.get("mode") == "narrate":
+        return job_dir / "source.pptx"
+    for p in sorted(job_dir.iterdir()):
+        if p.name.startswith("source.") and p.is_file():
+            return p
+    raise HTTPException(400, "This job's source file is missing — start a new draft instead.")
+
+
+@app.post("/api/jobs/{job_id}/redraft")
+def start_redraft(job_id: str, payload: dict = Body(default={})):
+    """Throw the current draft away and ask Claude for a fresh one from the same
+    source. The previous deck is kept in deck_previous.json for a one-step undo."""
+    job = _get_job(job_id)
+    if job["status"] in ("drafting", "building", "rendering", "queued"):
+        raise HTTPException(400, "Job is busy.")
+    cfg = load_config()
+    if not cfg.get("anthropic_api_key"):
+        raise HTTPException(400, "No Anthropic API key saved.")
+    src_path = _redraft_source(job_id)
+    if not src_path.exists():
+        raise HTTPException(400, "This job's source file is missing — start a new draft instead.")
+    instruction = (payload.get("instruction") or "").strip()
+    job.update(status="drafting", step="Redrafting the whole deck with Claude…",
+               progress=5, error=None, eta_seconds=40, cancel_requested=False)
+    _persist(job_id)
+    threading.Thread(target=_run_redraft, args=(job_id, src_path, cfg, instruction),
+                     daemon=True).start()
+    return {"ok": True}
+
+
+def _run_redraft(job_id: str, src_path: Path, cfg: dict, instruction: str):
+    job = _jobs[job_id]
+    job_dir = _job_dir(job_id)
+    opts = job["options"]
+    guidance = opts.get("guidance", "")
+    if opts.get("design_notes"):
+        guidance = (guidance + "\nDesign requirements: " + opts["design_notes"]).strip()
+    if opts.get("from_audio"):
+        guidance = ((guidance + "\n" if guidance else "") + AUDIO_GUIDANCE).strip()
+    if instruction:
+        guidance = ((guidance + "\n" if guidance else "")
+                    + "REDRAFT INSTRUCTION (takes priority over everything above): "
+                    + instruction).strip()
+    try:
+        _check_cancel(job_id)
+        plan = _produce_plan(job_id, src_path, cfg, guidance)
+        _check_cancel(job_id)
+        deck_path = job_dir / "deck.json"
+        if deck_path.exists():
+            shutil.copyfile(deck_path, job_dir / "deck_previous.json")
+        _save_plan(job_id, plan)
+        job.update(status="review", step="Fresh draft ready — review and amend below",
+                   progress=100, eta_seconds=None, cancel_requested=False,
+                   can_undo_redraft=True)
+    except JobCancelled:
+        job.update(status="review", step="Redraft cancelled — your previous draft is unchanged",
+                   progress=100, error=None, eta_seconds=None, cancel_requested=False)
+    except Exception as exc:
+        job.update(status="review", step="Redraft failed — your previous draft is unchanged",
+                   progress=100, error=str(exc), eta_seconds=None, cancel_requested=False)
+    _persist(job_id)
+
+
+@app.post("/api/jobs/{job_id}/redraft/undo")
+def undo_redraft(job_id: str):
+    """Restore the deck as it was before the last whole-deck redraft."""
+    job = _get_job(job_id)
+    if job["status"] in ("drafting", "building", "rendering", "queued"):
+        raise HTTPException(400, "Job is busy.")
+    prev = _job_dir(job_id) / "deck_previous.json"
+    if not prev.exists():
+        raise HTTPException(400, "Nothing to undo.")
+    plan = DeckPlan.model_validate_json(prev.read_text())
+    _save_plan(job_id, plan)
+    prev.unlink()
+    job.update(status="review", step="Previous draft restored", progress=100,
+               error=None, can_undo_redraft=False)
+    _persist(job_id)
+    return json.loads(plan.model_dump_json())
 
 
 # ------------------------------------------------------------ review & amend
