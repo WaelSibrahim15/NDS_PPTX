@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
-from . import extract, gamma, tts, audio_source
+from . import extract, tts, audio_source
 from .drafter import (draft_deck, draft_narration_for_existing,
                       regenerate_slide)
 from .models import DeckPlan, Slide
@@ -45,7 +45,6 @@ HISTORY_LIMIT = 4  # only keep / show the most recent decks
 ENV_KEY_MAP = {
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
-    "gamma_api_key": "GAMMA_API_KEY",
 }
 
 SAMPLE_TEXT = {
@@ -139,7 +138,6 @@ def get_config():
     return {
         "anthropic_key_set": bool(cfg.get("anthropic_api_key")),
         "openai_key_set": bool(cfg.get("openai_api_key")),
-        "gamma_key_set": bool(cfg.get("gamma_api_key")),
         "voices": voices,
         "settings_locked": _keys_from_env(),
         "macos_tts": _macos_tts_available(),
@@ -147,8 +145,7 @@ def get_config():
 
 
 @app.post("/api/settings")
-def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form(""),
-                 gamma_api_key: str = Form("")):
+def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form("")):
     if _keys_from_env():
         raise HTTPException(
             403,
@@ -159,8 +156,6 @@ def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form("
         cfg["anthropic_api_key"] = anthropic_api_key.strip()
     if openai_api_key.strip():
         cfg["openai_api_key"] = openai_api_key.strip()
-    if gamma_api_key.strip():
-        cfg["gamma_api_key"] = gamma_api_key.strip()
     save_config(cfg)
     return {"ok": True}
 
@@ -260,23 +255,24 @@ def start_draft(
     cfg = load_config()
     if not cfg.get("anthropic_api_key"):
         raise HTTPException(400, "No Anthropic API key saved yet — add it under Settings.")
-    if mode == "gamma" and not cfg.get("gamma_api_key"):
-        raise HTTPException(400, "No Gamma API key saved yet — add it under Settings (gamma.app → account → API).")
+
+    # Enhance mode retired — same outcome as narrate (scripts from slide content).
+    if mode == "enhance":
+        mode = "narrate"
+    if mode not in ("generate", "narrate"):
+        raise HTTPException(400, f"Unknown mode '{mode}' — choose NDS design or narration.")
 
     pasted = (source_text or "").strip()
     has_file = bool(file and file.filename)
     suffix = Path(file.filename).suffix.lower() if has_file else ""
     is_audio = has_file and suffix in audio_source.AUDIO_SUFFIXES
-    # Enhance mode retired — same outcome as narrate (scripts from slide content).
-    if mode == "enhance":
-        mode = "narrate"
 
     if mode == "narrate":
         if not has_file or suffix != ".pptx":
             raise HTTPException(400, "Create narration for each slide needs a .pptx file — upload the PowerPoint itself.")
     elif is_audio:
-        if mode not in ("generate", "gamma"):
-            raise HTTPException(400, "Audio upload works with NDS design or Gamma design.")
+        if mode != "generate":
+            raise HTTPException(400, "Audio upload works with NDS design.")
         if not cfg.get("openai_api_key"):
             raise HTTPException(400, "Audio sources need an OpenAI API key (Whisper transcription) — add it under Settings.")
     elif not has_file and not pasted:
@@ -317,7 +313,7 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
     job_dir = src_path.parent
     opts = job["options"]
     # User's design requirements ride along with the guidance for whichever
-    # engine designs the deck (NDS drafter or Gamma).
+    # engine designs the deck (NDS drafter).
     guidance = opts.get("guidance", "")
     if opts.get("design_notes"):
         guidance = (guidance + "\nDesign requirements: " + opts["design_notes"]).strip()
@@ -337,7 +333,7 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
             audio_source.save_transcript(job_dir, transcript)
             opts["from_audio"] = True
             opts["audio_file"] = src_path.name
-            # Draft from a .txt sibling so extract_text / gamma see plain text.
+            # Draft from a .txt sibling so extract_text sees plain text.
             text_path = job_dir / "source_from_audio.txt"
             text_path.write_text(transcript["text"], encoding="utf-8")
             src_path = text_path
@@ -351,29 +347,6 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
             ).strip()
             job.update(step="Transcript ready — drafting slides…", progress=22, eta_seconds=40)
 
-        if opts.get("mode") == "gamma":
-            text = extract.extract_text(src_path)
-            (job_dir / "source_text.txt").write_text(text)
-            job.update(step="Gamma is designing your deck…", progress=15, eta_seconds=150)
-
-            def on_gamma(pct, msg):
-                _check_cancel(job_id)
-                job.update(step=msg, progress=15 + int(pct * 0.4),
-                           eta_seconds=max(10, int(150 * (1 - pct / 100))))
-
-            deck_out = job_dir / "source.pptx"
-            if src_path == deck_out:  # user uploaded a .pptx as raw material
-                src_path = src_path.rename(job_dir / "upload.pptx")
-            gamma.generate_deck(
-                cfg["gamma_api_key"], text, deck_out,
-                language=opts["language"], guidance=guidance, progress=on_gamma,
-                theme_name=cfg.get("gamma_theme", ""),
-                brand=cfg.get("gamma_brand", True),
-            )
-            # from here on it's a narrate job: Gamma's design is locked, NDS voices it
-            opts["mode"] = "narrate"
-            opts["designed_by"] = "gamma"
-            src_path = deck_out
         _check_cancel(job_id)
         if opts.get("mode") == "narrate":
             slides = extract.extract_slides(src_path)
@@ -730,7 +703,7 @@ def _list_job_summaries() -> list:
             except Exception:
                 pass
         opts = state.get("options") or {}
-        mode = "gamma" if opts.get("designed_by") == "gamma" else opts.get("mode")
+        mode = opts.get("mode")
         items.append({
             "id": state_path.parent.name,
             "title": title or state.get("source_name") or state_path.parent.name,

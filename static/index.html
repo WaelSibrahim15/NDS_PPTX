@@ -852,7 +852,6 @@
           <span class="field-label">Mode</span>
           <select id="mode">
             <option value="generate" selected>Create — NDS design</option>
-            <option value="gamma">Create — Gamma design</option>
             <option value="narrate">Create narration for each slide</option>
           </select>
         </div>
@@ -989,8 +988,6 @@
       <input type="password" id="ak" placeholder="sk-ant-…">
       <label>OpenAI API key (voices) <span class="keystate" id="ok-state"></span></label>
       <input type="password" id="ok" placeholder="sk-…">
-      <label>Gamma API key (designed decks, optional) <span class="keystate" id="gm-state"></span></label>
-      <input type="password" id="gm" placeholder="sk-gamma-…">
       <button class="small" id="save-keys" style="margin-top:10px">Save keys</button>
       <span id="save-state" style="font-size:13px;margin-left:10px"></span>
       <p class="hint-line" style="margin-top:10px" id="settings-local-note">
@@ -1130,7 +1127,6 @@ const HOW_STEPS = {
     body: `<p>Start by dropping a source file onto the stage (or click to browse). Then pick what NDS should do:</p>
       <ul>
         <li><strong>NDS design</strong> — Claude drafts the deck; NDS builds NIQ-branded slides you can fully edit.</li>
-        <li><strong>Gamma design</strong> — Gamma designs a richer PPTX; NDS writes and voices the narration.</li>
         <li><strong>Narrate PPTX</strong> — Keep your existing design; NDS only adds spoken narration.</li>
         <li><strong>Enhance PPTX</strong> — Keep your design and add imagery, entrance motion, and narration.</li>
       </ul>
@@ -1212,12 +1208,10 @@ async function refreshConfig() {
   $('ak-state').className = 'keystate ' + (cfg.anthropic_key_set ? 'ok' : 'error');
   $('ok-state').textContent = cfg.openai_key_set ? '✓ saved' : '— not set';
   $('ok-state').className = 'keystate ' + (cfg.openai_key_set ? 'ok' : 'error');
-  $('gm-state').textContent = cfg.gamma_key_set ? '✓ saved' : '— not set';
-  $('gm-state').className = 'keystate ' + (cfg.gamma_key_set ? 'ok' : '');
   const locked = !!cfg.settings_locked;
   $('settings-locked-note').style.display = locked ? 'block' : 'none';
   $('settings-local-note').style.display = locked ? 'none' : 'block';
-  for (const id of ['ak', 'ok', 'gm', 'save-keys']) $(id).disabled = locked;
+  for (const id of ['ak', 'ok', 'save-keys']) $(id).disabled = locked;
   if (!cfg.anthropic_key_set) $('settings').open = true;
   fillVoices();
 }
@@ -1257,10 +1251,8 @@ function updateModeUI() {
   $('file').accept = locked ? '.pptx' : '.docx,.pdf,.pptx,.txt,.md,.mp3,.m4a,.wav,.webm,.ogg,audio/*';
   $('drop-hint').textContent =
     m === 'narrate' ? 'Upload a .pptx with no narration — NDS writes a script per slide from the page content'
-    : m === 'gamma' ? 'Document or audio — Gamma designs; audio keeps the original voice'
     : 'Document, paste, or audio (.mp3 / .m4a / .wav)';
   $('go').textContent = m === 'narrate' ? 'Create narration scripts (no voice yet)'
-    : m === 'gamma' ? 'Create PPTX draft with Gamma (no voice)'
     : 'Create PPTX draft (without voice)';
   syncModeTiles();
   syncCartPills();
@@ -1295,12 +1287,10 @@ function syncPipelinePreview() {
   const tpl = $('template').value;
   const logic = {
     generate: `const deck = NDS.draft(source, { template: "${tpl}", lang: "${lang}" });`,
-    gamma: `const deck = Gamma.design(source).then(NDS.narrate);`,
     narrate: `const scripts = NDS.writeNarration(pptx.slides); // one script per page`,
   };
   const result = {
     generate: 'NIQ slides + narration script',
-    gamma: 'Gamma PPTX + narration',
     narrate: 'Your slides + narration script per page',
   };
   const el = $('pipe-logic');
@@ -1357,9 +1347,8 @@ $('save-keys').addEventListener('click', async () => {
   const fd = new FormData();
   fd.append('anthropic_api_key', $('ak').value);
   fd.append('openai_api_key', $('ok').value);
-  fd.append('gamma_api_key', $('gm').value);
   await fetch('/api/settings', { method: 'POST', body: fd });
-  $('ak').value = ''; $('ok').value = ''; $('gm').value = '';
+  $('ak').value = ''; $('ok').value = '';
   $('save-state').textContent = 'Saved.';
   setTimeout(() => $('save-state').textContent = '', 2500);
   refreshConfig();
@@ -1488,7 +1477,7 @@ async function poll() {
     deck = job.deck;
     applyOptions(job.options);
     renderReview(false);
-    const narrate = job.options?.mode === 'narrate' || job.options?.designed_by === 'gamma';
+    const narrate = job.options?.mode === 'narrate';
     const voiced = job.last_build_voiced !== false && job.options?.with_voice !== false;
     let html = '';
     if (job.file) {
@@ -1817,7 +1806,7 @@ async function exportVideo() {
   poll();
 }
 
-const MODE_LABEL = { generate: 'NDS design', gamma: 'Gamma', narrate: 'Narration scripts' };
+const MODE_LABEL = { generate: 'NDS design', narrate: 'Narration scripts' };
 const STATUS_LABEL = { review: 'draft', done: 'built', error: 'failed', cancelled: 'cancelled',
                        drafting: 'drafting', building: 'building', rendering: 'rendering', queued: 'queued' };
 

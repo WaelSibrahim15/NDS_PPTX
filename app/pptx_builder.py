@@ -361,7 +361,7 @@ def narrate_existing_pptx(
     """Embed narration audio into a COPY of an existing deck, leaving its design
     untouched: per-slide auto-play audio, auto-advance, narration in the notes.
     When ``animate`` is set, the slide's existing content shapes fade in one after
-    another as the voice-over plays (a generic build for designed/Gamma decks)."""
+    another as the voice-over plays (a generic build for designed decks)."""
     prs = Presentation(str(src_path))
     for idx, slide in enumerate(prs.slides):
         # capture the existing design shapes BEFORE we add audio so we only

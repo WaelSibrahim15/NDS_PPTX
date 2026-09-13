@@ -3,7 +3,7 @@
 A local web app that turns content into **narrated PowerPoint presentations**: slides
 with embedded per-slide audio that auto-plays and auto-advances, the narration in the
 speaker notes, and optional MP4 export. Runs entirely on this Mac; the only network
-calls are to the AI APIs you configure (Anthropic, OpenAI, Gamma).
+calls are to the AI APIs you configure (Anthropic, OpenAI).
 
 ---
 
@@ -18,12 +18,11 @@ calls are to the AI APIs you configure (Anthropic, OpenAI, Gamma).
    |---|---|---|
    | Anthropic | drafting slides, narration, image concepts | yes |
    | OpenAI | narration voices (TTS) + generated imagery (Enhance mode) | recommended — without it the offline macOS voice still works, images are skipped |
-   | Gamma | "Design with Gamma" mode | only for that mode |
 
    Keys live only in `config.json` in this folder (chmod 600). That file is
    gitignored — never commit it. For Railway / hosting, set the same values as
-   environment variables instead: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
-   `GAMMA_API_KEY` (see `config.example.json`).
+   environment variables instead: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
+   (see `config.example.json`).
 
 ---
 
@@ -41,7 +40,6 @@ Repo: push this `NDS/` folder as the GitHub repository root (e.g.
    |---|---|---|
    | `ANTHROPIC_API_KEY` | yes | drafting |
    | `OPENAI_API_KEY` | yes on Railway | cloud TTS (macOS `say` is unavailable) |
-   | `GAMMA_API_KEY` | only for Gamma mode | Gamma Generations API |
    | `APP_PASSWORD` | strongly recommended | HTTP Basic Auth password (username `nds` or blank) |
    | `JOBS_DIR` | recommended | set to `/data/jobs` when using a volume |
 
@@ -55,12 +53,11 @@ Health check: `GET /health` → `{"ok": true}`.
 
 ---
 
-## The four modes
+## The three modes
 
 | Mode | Input | What NDS does |
 |---|---|---|
 | **Create (NDS design)** | `.docx` `.pdf` `.pptx` `.txt` `.md` | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the NIQ 2026 design language |
-| **Design with Gamma** | any document | Gamma's Generations API designs the deck (theme, layouts, imagery) and exports a `.pptx`; NDS then narrates it like an uploaded deck |
 | **Narrate my PowerPoint** | a finished `.pptx` | Design stays byte-identical; NDS writes the narration (polishing existing speaker notes where present), voices it, embeds audio |
 | **Enhance my PowerPoint** | a designed `.pptx` | Design is kept, and NDS adds: AI-generated imagery (only into detected empty regions), build-in motion + slide fades, and full narration/voice |
 
@@ -93,14 +90,13 @@ Edits auto-save; rebuilds only re-voice slides whose narration changed.
 ```
 NDS/
 ├── Start NDS.command       # zsh launcher: venv bootstrap + uvicorn on :8765
-├── config.json             # API keys + optional gamma_theme / gamma_brand (0600)
+├── config.json             # API keys (0600)
 ├── requirements.txt
 ├── app/
 │   ├── main.py             # FastAPI app: endpoints, job lifecycle, build orchestration
 │   ├── models.py           # Pydantic deck model (DeckPlan / Slide / Card / Stat / CompareSide)
 │   ├── extract.py          # text + per-slide extraction from docx/pdf/pptx/txt/md
 │   ├── drafter.py          # all Claude calls (drafting, narration, enhance plan, translation)
-│   ├── gamma.py            # Gamma Generations API client + NIQ brand brief
 │   ├── enhance.py          # Enhance mode: empty-region detection + OpenAI image generation
 │   ├── tts.py              # TTS providers, dialogue splitting, audio stitching
 │   ├── pptx_builder.py     # PPTX assembly: layouts, audio embed, timing XML
@@ -119,7 +115,7 @@ Pillow (not LibreOffice), video is encoded by the ffmpeg binary that ships insid
 | File | Contents |
 |---|---|
 | `state.json` | status, step, progress, options, output filenames — the job survives server restarts |
-| `source.*` | the uploaded file (Gamma mode replaces it with Gamma's designed `source.pptx`) |
+| `source.*` | the uploaded file |
 | `source_text.txt` | extracted text handed to Claude |
 | `deck.json` | the editable `DeckPlan` (layouts, titles, bullets, narration per slide) |
 | `enhance.json` | Enhance mode: per-slide image prompts + detected empty rectangles |
@@ -223,25 +219,12 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
 - The result is saved as `enhanced.pptx` and then flows through the normal
   narrate pipeline with movements enabled.
 
-### Gamma engine (`gamma.py`)
-
-- `POST /v1.0/generations` (`exportAs: "pptx"`), polled until `completed`; the
-  deck downloads from `exportUrl`. v0.2 of the API is sunset; Cloudflare rejects
-  Python's default user agent, so a browser-style UA is sent.
-- Every generation is prefixed with the **NIQ PowerPoint compliance brief**
-  (official-template behaviour, logo clear space, blues/white dominant, sentence
-  case, Arial/Georgia, chart recoloring, data neutrality, co-brand rules) inside
-  `additionalInstructions`; a saved Gamma theme can be pinned via `gamma_theme`
-  in `config.json` (`gamma_brand: false` disables the brief). Generation costs
-  Gamma credits (~45 s).
-- Gamma **cannot edit an existing pptx** — that's what Enhance mode is for.
-
 ### Video export (`video.py` + `renderer.py`)
 
 NDS-designed decks only: `renderer.py` re-draws every layout as 1920×1080 PNGs with
 Pillow (it deliberately mirrors `pptx_builder`'s geometry and palette — **keep the
 two in sync when changing layouts**), then ffmpeg concats per-slide segments
-(frame + narration + 1 s tail) into one MP4. Uploaded/Gamma decks have no frame
+(frame + narration + 1 s tail) into one MP4. Uploaded decks have no frame
 source, so MP4 export is disabled for them.
 
 ### Build orchestration (`main.py::_run_build`)
