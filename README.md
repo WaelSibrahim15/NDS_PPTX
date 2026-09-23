@@ -18,10 +18,12 @@ calls are to the AI APIs you configure (Anthropic, OpenAI).
    |---|---|---|
    | Anthropic | drafting slides, narration, image concepts | yes |
    | OpenAI | narration voices (TTS) + generated imagery (Enhance mode) | recommended — without it the offline macOS voice still works, images are skipped |
+   | ElevenLabs key + voice ID(s) | custom / cloned narration voices | optional — adds an **ElevenLabs** voice provider; several voice IDs can be comma-separated |
 
    Keys live only in `config.json` in this folder (chmod 600). That file is
    gitignored — never commit it. For Railway / hosting, set the same values as
-   environment variables instead: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`
+   environment variables instead: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+   `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`
    (see `config.example.json`).
 
 ---
@@ -40,6 +42,8 @@ Repo: push this `NDS/` folder as the GitHub repository root (e.g.
    |---|---|---|
    | `ANTHROPIC_API_KEY` | yes | drafting |
    | `OPENAI_API_KEY` | yes on Railway | cloud TTS (macOS `say` is unavailable) |
+   | `ELEVENLABS_API_KEY` | optional | ElevenLabs voices |
+   | `ELEVENLABS_VOICE_ID` | with the key above | ElevenLabs voice ID (comma-separate several) |
    | `APP_PASSWORD` | strongly recommended | HTTP Basic Auth password (username `nds` or blank) |
    | `JOBS_DIR` | recommended | set to `/data/jobs` when using a volume |
 

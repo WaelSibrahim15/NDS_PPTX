@@ -45,6 +45,8 @@ HISTORY_LIMIT = 4  # only keep / show the most recent decks
 ENV_KEY_MAP = {
     "anthropic_api_key": "ANTHROPIC_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
+    "elevenlabs_api_key": "ELEVENLABS_API_KEY",
+    "elevenlabs_voice_ids": "ELEVENLABS_VOICE_ID",
 }
 
 AUDIO_GUIDANCE = (
@@ -58,6 +60,7 @@ AUDIO_GUIDANCE = (
 SAMPLE_TEXT = {
     "openai": "Hello! This is how I sound. I will be the narrator of your presentation.",
     "macos": "Hello! This is how I sound. I will be the narrator of your presentation.",
+    "elevenlabs": "Hello! This is how I sound. I will be the narrator of your presentation.",
 }
 
 app = FastAPI(title="NDS — Narrated Deck Studio")
@@ -137,23 +140,43 @@ def health():
     return {"ok": True}
 
 
+_voice_names: dict = {}  # ElevenLabs voice ID -> display name
+
+
+def _elevenlabs_voice_ids(cfg: dict) -> list:
+    raw = cfg.get("elevenlabs_voice_ids", "")
+    return [v.strip() for v in raw.replace("\n", ",").split(",") if v.strip()]
+
+
 @app.get("/api/config")
 def get_config():
     cfg = load_config()
     voices = {"openai": tts.OpenAITTS.VOICES}
+    voice_labels = {}
+    el_ids = _elevenlabs_voice_ids(cfg)
+    if cfg.get("elevenlabs_api_key") and el_ids:
+        voices["elevenlabs"] = el_ids
+        for vid in el_ids:
+            if vid not in _voice_names:
+                _voice_names[vid] = tts.ElevenLabsTTS(cfg["elevenlabs_api_key"]).voice_name(vid)
+            voice_labels[vid] = _voice_names[vid]
     if _macos_tts_available():
         voices["macos"] = tts.MacSayTTS.VOICES
     return {
         "anthropic_key_set": bool(cfg.get("anthropic_api_key")),
         "openai_key_set": bool(cfg.get("openai_api_key")),
+        "elevenlabs_key_set": bool(cfg.get("elevenlabs_api_key")),
+        "elevenlabs_voice_ids": ", ".join(el_ids),
         "voices": voices,
+        "voice_labels": voice_labels,
         "settings_locked": _keys_from_env(),
         "macos_tts": _macos_tts_available(),
     }
 
 
 @app.post("/api/settings")
-def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form("")):
+def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form(""),
+                 elevenlabs_api_key: str = Form(""), elevenlabs_voice_ids: str = Form("")):
     if _keys_from_env():
         raise HTTPException(
             403,
@@ -164,6 +187,10 @@ def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form("
         cfg["anthropic_api_key"] = anthropic_api_key.strip()
     if openai_api_key.strip():
         cfg["openai_api_key"] = openai_api_key.strip()
+    if elevenlabs_api_key.strip():
+        cfg["elevenlabs_api_key"] = elevenlabs_api_key.strip()
+    if elevenlabs_voice_ids.strip():
+        cfg["elevenlabs_voice_ids"] = elevenlabs_voice_ids.strip()
     save_config(cfg)
     return {"ok": True}
 
@@ -210,6 +237,10 @@ def _engine(provider: str, cfg: dict):
         if not _macos_tts_available():
             raise RuntimeError("macOS offline voice is not available on this host — use OpenAI.")
         return tts.MacSayTTS()
+    if provider == "elevenlabs":
+        if not cfg.get("elevenlabs_api_key"):
+            raise RuntimeError("No ElevenLabs API key saved — add it under Settings.")
+        return tts.ElevenLabsTTS(api_key=cfg["elevenlabs_api_key"])
     if not cfg.get("openai_api_key"):
         raise RuntimeError("No OpenAI API key saved — add it under Settings, or pick the offline macOS voice.")
     return tts.OpenAITTS(api_key=cfg["openai_api_key"])
@@ -236,6 +267,14 @@ def _slide_secs(opts: dict) -> float:
     """Rough per-slide voicing time for the ETA display."""
     base = 1.5 if opts.get("provider") == "macos" else 4.0
     return base * (1.7 if opts.get("narration_style") == "conversation" else 1.0)
+
+
+def _tts_key_error(provider: str, cfg: dict) -> str | None:
+    if provider == "openai" and not cfg.get("openai_api_key"):
+        return "No OpenAI API key saved — add it under Settings, or pick the offline macOS voice."
+    if provider == "elevenlabs" and not cfg.get("elevenlabs_api_key"):
+        return "No ElevenLabs API key saved — add it under Settings."
+    return None
 
 
 def _check_cancel(job_id: str):
@@ -618,8 +657,8 @@ def start_build(job_id: str, payload: dict = Body(default={})):
     with_voice = bool(payload.get("with_voice", True))
     opts["with_voice"] = with_voice
     needs_tts = with_voice and not opts.get("from_audio")
-    if needs_tts and opts["provider"] == "openai" and not cfg.get("openai_api_key"):
-        raise HTTPException(400, "No OpenAI API key saved — add it under Settings, or pick the offline macOS voice.")
+    if needs_tts and (err := _tts_key_error(opts["provider"], cfg)):
+        raise HTTPException(400, err)
     job.update(status="building",
                step=("Slicing original audio…" if (with_voice and opts.get("from_audio"))
                      else "Preparing narration…" if with_voice else "Preparing PPTX draft…"),
@@ -726,8 +765,8 @@ def start_video(job_id: str, payload: dict = Body(default={})):
     for k in ("provider", "voice", "voice2", "template", "narration_style"):
         if payload.get(k) is not None and payload.get(k) != "":
             opts[k] = payload[k]
-    if opts["provider"] == "openai" and not cfg.get("openai_api_key"):
-        raise HTTPException(400, "No OpenAI API key saved — add it under Settings, or pick the offline macOS voice.")
+    if err := _tts_key_error(opts["provider"], cfg):
+        raise HTTPException(400, err)
     job.update(status="rendering", step="Preparing video…", progress=0, error=None)
     _persist(job_id)
     threading.Thread(target=_run_video, args=(job_id, cfg), daemon=True).start()

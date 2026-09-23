@@ -911,6 +911,7 @@
             <span class="field-label">Voice provider</span>
             <select id="provider">
               <option value="openai">OpenAI (cloud)</option>
+              <option value="elevenlabs">ElevenLabs (cloud)</option>
               <option value="macos">macOS (offline)</option>
             </select>
           </div>
@@ -1010,6 +1011,10 @@
       <input type="password" id="ak" placeholder="sk-ant-…">
       <label>OpenAI API key (voices) <span class="keystate" id="ok-state"></span></label>
       <input type="password" id="ok" placeholder="sk-…">
+      <label>ElevenLabs API key (voices) <span class="keystate" id="el-state"></span></label>
+      <input type="password" id="el" placeholder="sk_…">
+      <label>ElevenLabs voice ID(s) <span class="keystate" id="elv-state"></span></label>
+      <input type="text" id="elv" placeholder="voice ID, or several separated by commas">
       <button class="small" id="save-keys" style="margin-top:10px">Save keys</button>
       <span id="save-state" style="font-size:13px;margin-left:10px"></span>
       <p class="hint-line" style="margin-top:10px" id="settings-local-note">
@@ -1022,6 +1027,7 @@
 
 <script>
 let VOICES = {};
+let VOICE_LABELS = {};
 let jobId = null;
 let deck = null;
 let saveTimer = null;
@@ -1162,7 +1168,7 @@ const HOW_STEPS = {
         <li><strong>Edit narration</strong> — the exact words that will be spoken on each slide.</li>
         <li><strong>Preview audio</strong> — hear one slide with your chosen voice before building.</li>
         <li><strong>Regenerate</strong> — ask Claude to redraft a slide with an optional instruction.</li>
-        <li><strong>Voice settings</strong> — OpenAI or macOS voices; single narrator or two-voice conversation.</li>
+        <li><strong>Voice settings</strong> — OpenAI, ElevenLabs or macOS voices; single narrator or two-voice conversation.</li>
       </ul>
       <p>Changes auto-save. Rebuild later only re-voices slides whose narration changed.</p>`
   },
@@ -1219,6 +1225,11 @@ async function refreshConfig() {
     o.value = 'openai'; o.textContent = 'OpenAI (cloud)';
     prov.appendChild(o);
   }
+  if (VOICES.elevenlabs) {
+    const o = document.createElement('option');
+    o.value = 'elevenlabs'; o.textContent = 'ElevenLabs (cloud)';
+    prov.appendChild(o);
+  }
   if (VOICES.macos) {
     const o = document.createElement('option');
     o.value = 'macos'; o.textContent = 'macOS (offline)';
@@ -1230,10 +1241,15 @@ async function refreshConfig() {
   $('ak-state').className = 'keystate ' + (cfg.anthropic_key_set ? 'ok' : 'error');
   $('ok-state').textContent = cfg.openai_key_set ? '✓ saved' : '— not set';
   $('ok-state').className = 'keystate ' + (cfg.openai_key_set ? 'ok' : 'error');
+  $('el-state').textContent = cfg.elevenlabs_key_set ? '✓ saved' : '— not set';
+  $('el-state').className = 'keystate ' + (cfg.elevenlabs_key_set ? 'ok' : 'error');
+  $('elv-state').textContent = cfg.elevenlabs_voice_ids ? '✓ ' + cfg.elevenlabs_voice_ids : '— not set';
+  $('elv-state').className = 'keystate ' + (cfg.elevenlabs_voice_ids ? 'ok' : 'error');
+  VOICE_LABELS = cfg.voice_labels || {};
   const locked = !!cfg.settings_locked;
   $('settings-locked-note').style.display = locked ? 'block' : 'none';
   $('settings-local-note').style.display = locked ? 'none' : 'block';
-  for (const id of ['ak', 'ok', 'save-keys']) $(id).disabled = locked;
+  for (const id of ['ak', 'ok', 'el', 'elv', 'save-keys']) $(id).disabled = locked;
   if (!cfg.anthropic_key_set) $('settings').open = true;
   fillVoices();
 }
@@ -1245,7 +1261,7 @@ function fillVoices() {
     const prev = sel.value;
     sel.innerHTML = '';
     (VOICES[provider] || []).forEach(v => {
-      const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o);
+      const o = document.createElement('option'); o.value = v; o.textContent = VOICE_LABELS[v] || v; sel.appendChild(o);
     });
     if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
   }
@@ -1369,8 +1385,10 @@ $('save-keys').addEventListener('click', async () => {
   const fd = new FormData();
   fd.append('anthropic_api_key', $('ak').value);
   fd.append('openai_api_key', $('ok').value);
+  fd.append('elevenlabs_api_key', $('el').value);
+  fd.append('elevenlabs_voice_ids', $('elv').value);
   await fetch('/api/settings', { method: 'POST', body: fd });
-  $('ak').value = ''; $('ok').value = '';
+  $('ak').value = ''; $('ok').value = ''; $('el').value = ''; $('elv').value = '';
   $('save-state').textContent = 'Saved.';
   setTimeout(() => $('save-state').textContent = '', 2500);
   refreshConfig();

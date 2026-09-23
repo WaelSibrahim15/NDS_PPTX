@@ -34,6 +34,62 @@ class OpenAITTS:
         return out_path
 
 
+class ElevenLabsTTS:
+    """Cloud voices via the ElevenLabs API, including cloned / custom voices.
+    Voices are addressed by voice ID (set in Settings or ELEVENLABS_VOICE_ID)."""
+
+    name = "elevenlabs"
+    API = "https://api.elevenlabs.io/v1"
+    MODEL = "eleven_multilingual_v2"
+
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+
+    def _request(self, path: str, body: dict | None = None, timeout: int = 180):
+        import json
+        import urllib.request
+
+        req = urllib.request.Request(
+            f"{self.API}{path}",
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"xi-api-key": self.api_key, "Content-Type": "application/json"},
+            method="POST" if body is not None else "GET",
+        )
+        return urllib.request.urlopen(req, timeout=timeout)
+
+    def synthesize(self, text: str, voice: str, out_path: Path) -> Path:
+        import shutil
+        import urllib.error
+        from urllib.parse import quote
+
+        out_path = out_path.with_suffix(".mp3")
+        try:
+            with self._request(
+                f"/text-to-speech/{quote(voice, safe='')}?output_format=mp3_44100_128",
+                {"text": text, "model_id": self.MODEL},
+            ) as r, open(out_path, "wb") as f:
+                shutil.copyfileobj(r, f)
+        except urllib.error.HTTPError as exc:
+            out_path.unlink(missing_ok=True)
+            detail = exc.read().decode(errors="replace")[:300]
+            raise RuntimeError(f"ElevenLabs TTS failed ({exc.code}): {detail}") from exc
+        except urllib.error.URLError as exc:
+            out_path.unlink(missing_ok=True)
+            raise RuntimeError(f"Could not reach ElevenLabs: {exc.reason}") from exc
+        return out_path
+
+    def voice_name(self, voice_id: str) -> str:
+        """Display name of a voice ID; falls back to the ID itself."""
+        import json
+        from urllib.parse import quote
+
+        try:
+            with self._request(f"/voices/{quote(voice_id, safe='')}", timeout=10) as r:
+                return json.loads(r.read()).get("name") or voice_id
+        except Exception:
+            return voice_id
+
+
 class MacSayTTS:
     """Offline fallback using the built-in macOS voice — for demos and testing
     without an OpenAI key. Produces .m4a (AAC), which PowerPoint embeds fine."""
