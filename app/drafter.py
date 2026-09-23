@@ -1,11 +1,12 @@
 """NDS — turn raw source text into a deck plan with narration, via the Claude API."""
 from anthropic import Anthropic
 
+from .design import SYMBOLS
 from .models import DeckPlan
 
 MODEL = "claude-opus-4-8"
 
-SYSTEM = """You are the drafting engine of NDS (Narrated Deck Studio), a tool that turns a \
+SYSTEM_TEMPLATE = """You are the drafting engine of NDS (Narrated Deck Studio), a tool that turns a \
 source document into a narrated PowerPoint presentation.
 
 From the source material, produce a complete deck plan:
@@ -20,10 +21,12 @@ takeaways).
 Layout vocabulary — VARY the layouts; a deck of nothing but bullet slides is a failure:
 - "content": 3-6 short bullets (max ~12 words each). Fine for genuinely list-like material, but \
 never use it for more than two slides in a row.
-- "cards": 2-4 numbered cards, each with a short "title" (2-5 words) and a one-sentence "desc". \
+- "cards": 2-4 feature cards, each with a short "title" (2-5 words), a one-sentence "desc" and an \
+"icon": the NIQ brand symbol that best fits the card, chosen ONLY from: {symbols}. \
+Use each symbol at most once per slide; leave "icon" empty if none fits. \
 Perfect for pillars, principles, workstreams, options, personas.
-- "stats": 3-5 headline numbers, each with a "value" (e.g. "160PB+", "90%", "$7.4T") and a short \
-"label". Use whenever the source contains strong figures — numbers deserve their own slide.
+- "stats": 2-5 headline numbers, each with a "value" (e.g. "160PB+", "90%", "$7.4T") and a short \
+"label". Put the most important number FIRST: it becomes the slide's big callout. Use whenever the source contains strong figures — numbers deserve their own slide.
 - "compare": two side-by-side panels (compare_left / compare_right), each with a "heading" and \
 3-6 short items. Perfect for do/don't, permitted/prohibited, before/after, pros/cons, us/them.
 - On every content-style slide ("content", "cards", "stats", "compare"), also set "subtitle" to a \
@@ -82,6 +85,8 @@ slide gets a short welcome of 2-3 sentences.
 - Write narration in the requested language. Slide text follows the same language.
 
 Stay faithful to the source material; do not invent facts that are not in it."""
+
+SYSTEM = SYSTEM_TEMPLATE.replace("{symbols}", ", ".join(SYMBOLS) or "(none available)")
 
 
 CONVERSATION_RULES = """

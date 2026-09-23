@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class Card(BaseModel):
     title: str
     desc: str
+    icon: Optional[str] = None   # NIQ brand symbol name (see design.SYMBOLS)
 
 
 class Stat(BaseModel):

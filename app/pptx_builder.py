@@ -1,7 +1,7 @@
 """NDS — assemble the narrated .pptx from a deck plan + per-slide audio files.
 
-Styling follows the NIQ 2026 design language: Deep Blue / Bright Blue / orange
-accent, Arial headings, Georgia italic accents, circle motif.
+Slide design lives in design.py (the NIQ design system from Claude Design);
+this module turns those layouts into PowerPoint shapes and adds narration.
 """
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -9,11 +9,13 @@ from typing import Dict, List, Optional
 from lxml import etree
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.oxml.ns import qn
-from pptx.util import Emu, Inches, Pt
+from pptx.util import Inches, Pt
 
-from .models import DeckPlan, Slide
+from . import design
+from .models import DeckPlan
 from .tts import audio_duration_seconds
 
 # python-pptx (≤1.0.x) crashes when adding media to a deck that already contains
@@ -33,26 +35,8 @@ def _find_media_by_sha1_safe(self, sha1):
 
 _MediaParts._find_by_sha1 = _find_media_by_sha1_safe
 
-# Official NIQ 2026 brand palette (from the brand deck theme: dk2 + accent1-6).
-DEEP_BLUE = RGBColor(0x06, 0x0A, 0x45)   # dk2  — Deep Navy (title/section/closing bg)
-BRIGHT_BLUE = RGBColor(0x2C, 0x6D, 0xF6)  # accent1 — Bright Blue (primary accent)
-CYAN = RGBColor(0x31, 0xD1, 0xFF)         # accent2 — Cyan (cool accent, best on dark)
-ORANGE = RGBColor(0xEF, 0x5F, 0x17)       # accent3 — Orange (sparing warm highlight)
-GREEN = RGBColor(0x59, 0xAD, 0x00)        # accent4
-PINK = RGBColor(0xEF, 0x58, 0x90)         # accent5
-AMBER = RGBColor(0xFF, 0xB5, 0x00)        # accent6
-WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-DARK_GREY = RGBColor(0x55, 0x55, 0x55)    # dk1 — brand body/text grey
-LIGHT_BLUE_TINT = RGBColor(0xF0, 0xF4, 0xFF)
-
-SLIDE_W = Inches(13.333)
-SLIDE_H = Inches(7.5)
-
-NEUTRAL = {
-    "bg_dark": RGBColor(0x1F, 0x2A, 0x37),
-    "accent": RGBColor(0x2F, 0x6F, 0xED),
-    "accent2": RGBColor(0xD9, 0x77, 0x06),
-}
+SLIDE_W = Inches(design.W)
+SLIDE_H = Inches(design.H)
 
 
 def _card_entrance_anims(card_groups, duration_s: float):
@@ -84,29 +68,10 @@ def build_deck(
     prs.slide_height = SLIDE_H
     blank = prs.slide_layouts[6]
 
-    colors = _palette(template)
-    content_count = sum(1 for s in plan.slides if s.layout == "content")
-    content_seen = 0
-
     for idx, spec in enumerate(plan.slides):
         slide = prs.slides.add_slide(blank)
-        card_groups = None
-        if spec.layout == "title":
-            _title_slide(slide, plan, spec, colors)
-        elif spec.layout == "section":
-            content_seen += 0
-            _section_slide(slide, spec, colors)
-        elif spec.layout == "closing":
-            _closing_slide(slide, spec, colors)
-        elif spec.layout == "cards" and spec.cards:
-            card_groups = _cards_slide(slide, spec, colors, idx + 1, len(plan.slides))
-        elif spec.layout == "stats" and spec.stats:
-            _stats_slide(slide, spec, colors, idx + 1, len(plan.slides))
-        elif spec.layout == "compare" and (spec.compare_left or spec.compare_right):
-            _compare_slide(slide, spec, colors, idx + 1, len(plan.slides))
-        else:
-            content_seen += 1
-            _content_slide(slide, spec, colors, idx + 1, len(plan.slides))
+        groups = _draw_scene(slide, design.layout_slide(plan, idx, template))
+        card_groups = [groups[k] for k in sorted(groups)] if spec.layout == "cards" else None
 
         # narration into speaker notes so a human presenter can reuse the deck
         slide.notes_slide.notes_text_frame.text = spec.narration
@@ -124,231 +89,108 @@ def build_deck(
     return out_path
 
 
-def _palette(template: str) -> Dict[str, RGBColor]:
-    if template == "neutral":
-        return {
-            "dark": NEUTRAL["bg_dark"], "accent": NEUTRAL["accent"],
-            "accent2": NEUTRAL["accent2"], "cyan": RGBColor(0x38, 0xB2, 0xC4),
-            "green": RGBColor(0x2F, 0x9E, 0x44), "pink": RGBColor(0xC2, 0x41, 0x7A),
-            "amber": RGBColor(0xD9, 0x9E, 0x06), "body": DARK_GREY,
-            "tint": RGBColor(0xEE, 0xF2, 0xF8),
-        }
-    return {
-        "dark": DEEP_BLUE, "accent": BRIGHT_BLUE, "accent2": ORANGE,
-        "cyan": CYAN, "green": GREEN, "pink": PINK, "amber": AMBER,
-        "body": DARK_GREY, "tint": LIGHT_BLUE_TINT,
-    }
+# ------------------------------------------------------------ scene → shapes
+
+_FONTS = {"sans": "Arial", "serif": "Georgia"}
+_ALIGN = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
+_ANCHOR = {"top": MSO_ANCHOR.TOP, "middle": MSO_ANCHOR.MIDDLE, "bottom": MSO_ANCHOR.BOTTOM}
 
 
-# ---------------------------------------------------------------- slide styles
-
-def _fill(slide, color: RGBColor):
-    slide.background.fill.solid()
-    slide.background.fill.fore_color.rgb = color
+def _rgb(hex_color: str) -> RGBColor:
+    return RGBColor.from_string(hex_color.lstrip("#").upper())
 
 
-def _textbox(slide, left, top, width, height):
-    box = slide.shapes.add_textbox(left, top, width, height)
-    tf = box.text_frame
-    tf.word_wrap = True
-    return box, tf
-
-
-def _run(para, text, *, font="Arial", size=18, bold=False, italic=False, color=DARK_GREY):
-    r = para.add_run()
-    r.text = text
-    r.font.name = font
-    r.font.size = Pt(size)
-    r.font.bold = bold
-    r.font.italic = italic
-    r.font.color.rgb = color
-    return r
-
-
-def _circle(slide, left, top, diameter, color: RGBColor, outline_only=False, line_w=2.5):
-    from pptx.enum.shapes import MSO_SHAPE
-
-    shp = slide.shapes.add_shape(MSO_SHAPE.OVAL, left, top, diameter, diameter)
-    if outline_only:
-        shp.fill.background()
-        shp.line.color.rgb = color
-        shp.line.width = Pt(line_w)
-    else:
+def _no_shadow_solid(shp, fill: Optional[str]):
+    if fill:
         shp.fill.solid()
-        shp.fill.fore_color.rgb = color
-        shp.line.fill.background()
+        shp.fill.fore_color.rgb = _rgb(fill)
+    else:
+        shp.fill.background()
     shp.shadow.inherit = False
-    return shp
 
 
-def _title_slide(slide, plan: DeckPlan, spec: Slide, c):
-    _fill(slide, c["dark"])
-    # signature circle motif, right side
-    _circle(slide, Inches(9.2), Inches(1.4), Inches(4.6), c["accent"], outline_only=True, line_w=3)
-    _circle(slide, Inches(10.6), Inches(4.6), Inches(1.5), c["cyan"])
-    _circle(slide, Inches(8.7), Inches(5.4), Inches(0.7), WHITE, outline_only=True, line_w=2)
-
-    _, tf = _textbox(slide, Inches(0.9), Inches(2.3), Inches(8.0), Inches(2.2))
-    p = tf.paragraphs[0]
-    _run(p, spec.title or plan.deck_title, size=40, bold=True, color=WHITE)
-
-    _, tf2 = _textbox(slide, Inches(0.9), Inches(4.3), Inches(7.6), Inches(1.0))
-    p2 = tf2.paragraphs[0]
-    _run(p2, spec.subtitle or plan.subtitle, font="Georgia", size=20, italic=True, color=c["cyan"])
-
-    _, tf3 = _textbox(slide, Inches(0.9), Inches(6.7), Inches(7.0), Inches(0.4))
-    _run(tf3.paragraphs[0], "Narrated presentation · generated with NDS", size=11,
-         color=RGBColor(0xB0, 0xB0, 0xD8))
-
-
-def _section_slide(slide, spec: Slide, c):
-    _fill(slide, c["accent"])
-    _circle(slide, Inches(-1.6), Inches(4.4), Inches(5.2), c["dark"])
-    _circle(slide, Inches(11.6), Inches(-1.2), Inches(3.4), c["accent2"], outline_only=True, line_w=3)
-
-    _, tf = _textbox(slide, Inches(1.0), Inches(2.9), Inches(11.0), Inches(1.8))
-    p = tf.paragraphs[0]
-    _run(p, spec.title, size=36, bold=True, color=WHITE)
-    if spec.subtitle:
-        _, tf2 = _textbox(slide, Inches(1.0), Inches(4.5), Inches(10.0), Inches(0.8))
-        _run(tf2.paragraphs[0], spec.subtitle, font="Georgia", size=18, italic=True, color=WHITE)
-
-
-GREY_TXT = RGBColor(0x55, 0x55, 0x55)
-CARD_TINT = RGBColor(0xF4, 0xF6, 0xFE)
-PAGE_GREY = RGBColor(0x9A, 0x9A, 0x9A)
-
-
-def _header(slide, spec: Slide, c, page_no: int, total: int):
-    """Shared chrome for content-style slides: title, kicker, footer, motif."""
-    _fill(slide, WHITE)
-    _circle(slide, Inches(12.35), Inches(6.75), Inches(0.45), c["accent"], outline_only=True, line_w=1.75)
-
-    _, tf = _textbox(slide, Inches(0.65), Inches(0.42), Inches(11.9), Inches(0.75))
-    _run(tf.paragraphs[0], spec.title, size=24, bold=True, color=c["dark"])
-    if spec.subtitle:
-        _, kick = _textbox(slide, Inches(0.65), Inches(1.05), Inches(11.9), Inches(0.4))
-        _run(kick.paragraphs[0], spec.subtitle, size=13, color=GREY_TXT)
-
-    _, pn = _textbox(slide, Inches(0.65), Inches(6.98), Inches(3.0), Inches(0.35))
-    _run(pn.paragraphs[0], f"{page_no} / {total}", size=10, color=PAGE_GREY)
-
-
-def _panel(slide, left, top, width, height, fill_color, rounded=True):
-    from pptx.enum.shapes import MSO_SHAPE
-
-    shape = MSO_SHAPE.ROUNDED_RECTANGLE if rounded else MSO_SHAPE.RECTANGLE
-    p = slide.shapes.add_shape(shape, left, top, width, height)
-    p.fill.solid()
-    p.fill.fore_color.rgb = fill_color
-    p.line.fill.background()
-    p.shadow.inherit = False
-    if rounded:
-        try:
-            p.adjustments[0] = 0.06
-        except Exception:
-            pass
-    return p
-
-
-def _content_slide(slide, spec: Slide, c, page_no: int, total: int):
-    _header(slide, spec, c, page_no, total)
-    _, body_tf = _textbox(slide, Inches(0.65), Inches(1.85), Inches(11.6), Inches(4.9))
-    first = True
-    for b in spec.bullets:
-        p = body_tf.paragraphs[0] if first else body_tf.add_paragraph()
-        first = False
-        p.space_after = Pt(16)
-        _run(p, "●  ", size=11, color=c["accent"])
-        _run(p, b, size=16, color=c["body"])
-
-
-def _cards_slide(slide, spec: Slide, c, page_no: int, total: int):
-    """Draw the numbered card grid. Returns one list of shape-ids per card so the
-    caller can give each card its own timed entrance animation."""
-    _header(slide, spec, c, page_no, total)
-    cards = spec.cards[:4]
-    n = len(cards)
-    accents = [c["accent"], c["accent2"], c["dark"], c["accent"]]
-    gap = Inches(0.3)
-    total_w = Inches(12.0)
-    card_w = int((total_w - gap * (n - 1)) / n)
-    top, card_h = Inches(1.9), Inches(4.3)
-    groups = []
-    for i, card in enumerate(cards):
-        left = Inches(0.65) + i * (card_w + gap)
-        panel = _panel(slide, left, top, card_w, card_h, CARD_TINT)
-        pad = Inches(0.28)
-        num_box, num = _textbox(slide, left + pad, top + Inches(0.25), card_w - pad * 2, Inches(0.6))
-        _run(num.paragraphs[0], f"{i + 1:02d}", size=28, bold=True, color=accents[i % len(accents)])
-        tt_box, tt = _textbox(slide, left + pad, top + Inches(1.0), card_w - pad * 2, Inches(1.0))
-        _run(tt.paragraphs[0], card.title, size=16, bold=True, color=c["dark"])
-        dd_box, dd = _textbox(slide, left + pad, top + Inches(1.95), card_w - pad * 2, card_h - Inches(2.2))
-        _run(dd.paragraphs[0], card.desc, size=11.5, color=GREY_TXT)
-        groups.append([panel.shape_id, num_box.shape_id, tt_box.shape_id, dd_box.shape_id])
+def _draw_scene(slide, scene: "design.Scene") -> Dict[int, List[int]]:
+    """Add every element of the scene to the slide. Returns {group: [shape_id, ...]}."""
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = _rgb(scene.background)
+    groups: Dict[int, List[int]] = {}
+    for el in scene.elements:
+        shp = _draw_element(slide, el)
+        _drop_theme_style(shp)
+        if el.group is not None:
+            groups.setdefault(el.group, []).append(shp.shape_id)
     return groups
 
 
-def _stats_slide(slide, spec: Slide, c, page_no: int, total: int):
-    _header(slide, spec, c, page_no, total)
-    stats = spec.stats[:5]
-    n = len(stats)
-    panel_top, panel_h = Inches(2.3), Inches(3.2)
-    _panel(slide, Inches(0.65), panel_top, Inches(12.0), panel_h, c["dark"])
-    col_w = int(Inches(12.0) / n)
-    for i, st in enumerate(stats):
-        left = Inches(0.65) + i * col_w
-        _, val = _textbox(slide, left + Inches(0.25), panel_top + Inches(0.85), col_w - Inches(0.5), Inches(0.9))
-        _run(val.paragraphs[0], st.value, size=30, bold=True,
-             color=WHITE if i % 2 == 0 else c["cyan"])
-        _, lab = _textbox(slide, left + Inches(0.25), panel_top + Inches(1.85), col_w - Inches(0.5), Inches(0.9))
-        _run(lab.paragraphs[0], st.label, size=11, color=RGBColor(0xC6, 0xD0, 0xFF))
+def _drop_theme_style(shp):
+    """Remove the theme style reference python-pptx adds to shapes and lines, so no
+    theme shadow or outline shows up: the design is flat colour only."""
+    style = shp._element.find(qn("p:style"))
+    if style is not None:
+        shp._element.remove(style)
 
 
-def _compare_slide(slide, spec: Slide, c, page_no: int, total: int):
-    _header(slide, spec, c, page_no, total)
-    panels = [(spec.compare_left, c["accent"]), (spec.compare_right, c["accent2"])]
-    top, head_h, body_h = Inches(1.9), Inches(0.6), Inches(4.0)
-    width = Inches(5.85)
-    for i, (side, accent) in enumerate(panels):
-        if side is None:
-            continue
-        left = Inches(0.65) + i * (width + Inches(0.3))
-        head = _panel(slide, left, top, width, head_h, accent, rounded=False)
-        htf = head.text_frame
-        htf.margin_left = Inches(0.25)
-        htf.word_wrap = True
-        htf.vertical_anchor = MSO_ANCHOR.MIDDLE
-        _run(htf.paragraphs[0], side.heading, size=14, bold=True, color=WHITE)
-        _panel(slide, left, top + head_h, width, body_h, CARD_TINT, rounded=False)
-        _, btf = _textbox(slide, left + Inches(0.25), top + head_h + Inches(0.2),
-                          width - Inches(0.5), body_h - Inches(0.4))
-        first = True
-        for item in side.items:
-            p = btf.paragraphs[0] if first else btf.add_paragraph()
-            first = False
-            p.space_after = Pt(10)
-            _run(p, "●  ", size=10, color=accent)
-            _run(p, item, size=13, color=c["body"])
-
-
-def _closing_slide(slide, spec: Slide, c):
-    _fill(slide, c["dark"])
-    _circle(slide, Inches(10.4), Inches(-1.8), Inches(4.4), c["accent"], outline_only=True, line_w=3)
-    _circle(slide, Inches(0.4), Inches(5.9), Inches(1.1), c["cyan"])
-
-    _, tf = _textbox(slide, Inches(0.9), Inches(2.2), Inches(10.5), Inches(1.4))
-    _run(tf.paragraphs[0], spec.title, size=34, bold=True, color=WHITE)
-
-    if spec.bullets:
-        _, tfb = _textbox(slide, Inches(0.9), Inches(3.8), Inches(10.5), Inches(2.4))
-        first = True
-        for b in spec.bullets:
-            p = tfb.paragraphs[0] if first else tfb.add_paragraph()
-            first = False
-            p.space_after = Pt(10)
-            _run(p, "●  ", size=12, color=c["accent2"])
-            _run(p, b, size=16, color=WHITE)
+def _draw_element(slide, el):
+    shapes = slide.shapes
+    if isinstance(el, design.Rect):
+        kind = MSO_SHAPE.ROUNDED_RECTANGLE if el.radius else MSO_SHAPE.RECTANGLE
+        shp = shapes.add_shape(kind, Inches(el.x), Inches(el.y), Inches(el.w), Inches(el.h))
+        _no_shadow_solid(shp, el.fill)
+        shp.line.fill.background()
+        if el.radius:
+            shp.adjustments[0] = min(0.5, el.radius / min(el.w, el.h))
+        return shp
+    if isinstance(el, design.Oval):
+        d = Inches(el.r * 2)
+        shp = shapes.add_shape(MSO_SHAPE.OVAL, Inches(el.cx - el.r), Inches(el.cy - el.r), d, d)
+        _no_shadow_solid(shp, el.fill)
+        if el.line:
+            shp.line.color.rgb = _rgb(el.line)
+            shp.line.width = Pt(el.line_w)
+        else:
+            shp.line.fill.background()
+        return shp
+    if isinstance(el, design.Arc):
+        d = Inches(el.r * 2)
+        shp = shapes.add_shape(MSO_SHAPE.ARC, Inches(el.cx - el.r), Inches(el.cy - el.r), d, d)
+        # python-pptx scales raw adjustment values by 1/100000; angles are in 60000ths of a degree
+        shp.adjustments[0] = (el.start % 360) * 0.6
+        shp.adjustments[1] = (el.end % 360) * 0.6
+        _no_shadow_solid(shp, None)
+        shp.line.color.rgb = _rgb(el.color)
+        shp.line.width = Pt(el.line_w)
+        return shp
+    if isinstance(el, design.Line):
+        shp = shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(el.x1), Inches(el.y1),
+                                   Inches(el.x2), Inches(el.y2))
+        shp.line.color.rgb = _rgb(el.color)
+        shp.line.width = Pt(el.line_w)
+        return shp
+    if isinstance(el, design.Image):
+        return shapes.add_picture(str(el.path), Inches(el.x), Inches(el.y), Inches(el.w), Inches(el.h))
+    if isinstance(el, design.Text):
+        box = shapes.add_textbox(Inches(el.x), Inches(el.y), Inches(el.w), Inches(el.h))
+        tf = box.text_frame
+        tf.word_wrap = True
+        tf.auto_size = MSO_AUTO_SIZE.NONE
+        tf.margin_left = tf.margin_right = tf.margin_top = tf.margin_bottom = 0
+        tf.vertical_anchor = _ANCHOR[el.anchor]
+        for i, para in enumerate(el.paras):
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.alignment = _ALIGN[para.align]
+            p.line_spacing = para.line_spacing
+            if para.space_after:
+                p.space_after = Pt(para.space_after)
+            for run in para.runs:
+                r = p.add_run()
+                r.text = run.text
+                r.font.name = _FONTS[run.font]
+                r.font.size = Pt(run.size)
+                r.font.bold = run.bold
+                r.font.italic = run.italic
+                r.font.color.rgb = _rgb(run.color)
+        return box
+    raise TypeError(f"Unknown design element: {el!r}")
 
 
 def narrate_existing_pptx(

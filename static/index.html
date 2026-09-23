@@ -871,7 +871,7 @@
         <div id="template-wrap">
           <span class="field-label">Template</span>
           <select id="template">
-            <option value="niq">NIQ 2026</option>
+            <option value="niq">NIQ (Claude Design)</option>
             <option value="neutral">Neutral professional</option>
           </select>
         </div>
@@ -1711,7 +1711,12 @@ function slideCard(s, i) {
       s.compare_left = parseSide(div.querySelector('.f-cmp-left').value);
       s.compare_right = parseSide(div.querySelector('.f-cmp-right').value);
     } else if (cf.kind === 'cards') {
-      s.cards = parsePairs(div.querySelector('.f-content').value).map(([t, d]) => ({ title: t, desc: d }));
+      // keep each card's NIQ symbol: match by title, else by position
+      const prevCards = s.cards || [];
+      s.cards = parsePairs(div.querySelector('.f-content').value).map(([t, d], i) => {
+        const prev = prevCards.find(x => x.title === t) || prevCards[i] || {};
+        return { title: t, desc: d, icon: prev.icon || null };
+      });
     } else if (cf.kind === 'stats') {
       s.stats = parsePairs(div.querySelector('.f-content').value).map(([v, l]) => ({ value: v, label: l }));
     } else {

@@ -1,114 +1,159 @@
 """NDS — render deck slides as 1920x1080 PNG frames with Pillow.
 
-Mirrors the pptx_builder layouts (NIQ 2026 / neutral) so the MP4 export looks
-like the deck without needing LibreOffice or PowerPoint installed.
+Draws the same layouts as the PPTX builder (both read app/design.py), so the
+review thumbnails and the MP4 export match the deck without needing
+LibreOffice or PowerPoint installed.
 
 Scale: the deck is 13.333in wide -> 1920px, so 1in = 144px and 1pt = 2px.
+Shapes are drawn at 2x and scaled down for smooth edges.
 """
+from functools import lru_cache
 from pathlib import Path
 from typing import List
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .models import DeckPlan, Slide
+from . import design
+from .models import DeckPlan
 
 W, H = 1920, 1080
-IN = 144          # pixels per inch
-PT = 2            # pixels per font point
+SS = 2                    # supersampling factor
+IN = 144 * SS             # pixels per inch while drawing
+PT = 2 * SS               # pixels per point while drawing
 
-FONT_DIR = Path("/System/Library/Fonts/Supplemental")
-FONTS = {
-    ("arial", False): "Arial.ttf",
-    ("arial", True): "Arial Bold.ttf",
-    ("georgia_italic", False): "Georgia Italic.ttf",
-}
-
-# Mirrors pptx_builder._palette — official NIQ 2026 brand hexes.
-PALETTES = {
-    "niq": {
-        "dark": (0x06, 0x0A, 0x45), "accent": (0x2C, 0x6D, 0xF6), "accent2": (0xEF, 0x5F, 0x17),
-        "cyan": (0x31, 0xD1, 0xFF), "green": (0x59, 0xAD, 0x00), "pink": (0xEF, 0x58, 0x90),
-        "amber": (0xFF, 0xB5, 0x00),
-        "body": (0x55, 0x55, 0x55), "white": (255, 255, 255), "grey": (154, 154, 154),
-        "footer": (176, 176, 216),
-    },
-    "neutral": {
-        "dark": (31, 42, 55), "accent": (47, 111, 237), "accent2": (217, 119, 6),
-        "cyan": (56, 178, 196), "green": (47, 158, 68), "pink": (194, 65, 122),
-        "amber": (217, 158, 6),
-        "body": (64, 64, 64), "white": (255, 255, 255), "grey": (154, 154, 154),
-        "footer": (170, 180, 195),
-    },
+# Real Arial / Georgia when present (macOS), else the bundled metric-compatible
+# Liberation fonts (SIL OFL), so Linux hosts such as Railway render properly.
+_MAC = Path("/System/Library/Fonts/Supplemental")
+_BUNDLED = design.ASSETS / "fonts"
+FONT_CANDIDATES = {
+    ("sans", False, False): [_MAC / "Arial.ttf", _BUNDLED / "LiberationSans-Regular.ttf"],
+    ("sans", True, False): [_MAC / "Arial Bold.ttf", _BUNDLED / "LiberationSans-Bold.ttf"],
+    ("serif", False, False): [_MAC / "Georgia.ttf", _BUNDLED / "LiberationSerif-Regular.ttf"],
+    ("serif", False, True): [_MAC / "Georgia Italic.ttf", _BUNDLED / "LiberationSerif-Italic.ttf"],
 }
 
 
-def _font(kind: str, bold: bool, size_pt: int) -> ImageFont.FreeTypeFont:
-    name = FONTS.get((kind, bold), "Arial.ttf")
-    path = FONT_DIR / name
-    try:
-        return ImageFont.truetype(str(path), size_pt * PT)
-    except OSError:
-        return ImageFont.load_default(size_pt * PT)
+@lru_cache(maxsize=128)
+def _font(family: str, bold: bool, italic: bool, px: int) -> ImageFont.FreeTypeFont:
+    key = (family, bold, italic)
+    if key not in FONT_CANDIDATES:
+        key = (family, bold, False) if (family, bold, False) in FONT_CANDIDATES else (family, False, False)
+    for path in FONT_CANDIDATES.get(key, FONT_CANDIDATES[("sans", False, False)]):
+        try:
+            return ImageFont.truetype(str(path), px)
+        except OSError:
+            continue
+    return ImageFont.load_default(px)
 
 
-def _wrap(draw: ImageDraw.ImageDraw, text: str, font, max_w: int) -> List[str]:
-    lines, line = [], ""
-    for word in text.split():
-        trial = (line + " " + word).strip()
-        if draw.textlength(trial, font=font) <= max_w:
-            line = trial
+def _rgb(hex_color: str):
+    h = hex_color.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _px(v: float) -> int:
+    return int(round(v * IN))
+
+
+# ------------------------------------------------------------------ text
+
+def _layout_para(draw, para: "design.Para", max_w: int):
+    """Wrap a paragraph of styled runs. Returns [(line_height, [(x, text, font, color)])]."""
+    words = []  # (text, font, color, trailing_space)
+    for run in para.runs:
+        font = _font(run.font, run.bold, run.italic, max(1, int(run.size * PT)))
+        parts = run.text.split(" ")
+        for i, w in enumerate(parts):
+            if w == "" and i not in (0, len(parts) - 1):
+                continue
+            words.append((w, font, _rgb(run.color), i < len(parts) - 1, run.size))
+    lines, cur, x = [], [], 0
+    size_max = 0
+    space_cache = {}
+    for text, font, color, space, size in words:
+        sp = space_cache.setdefault(id(font), draw.textlength(" ", font=font))
+        w = draw.textlength(text, font=font)
+        if cur and x + w > max_w and text:
+            lines.append((size_max, cur))
+            cur, x, size_max = [], 0, 0
+        if text or cur:
+            cur.append((x, text, font, color))
+        x += w + (sp if space else 0)
+        size_max = max(size_max, size)
+    if cur:
+        lines.append((size_max, cur))
+    return [(int(size * PT * 1.2 * para.line_spacing), items) for size, items in lines]
+
+
+def _draw_text(draw, el: "design.Text"):
+    x0, y0, bw, bh = _px(el.x), _px(el.y), _px(el.w), _px(el.h)
+    blocks = []
+    total = 0
+    for para in el.paras:
+        lines = _layout_para(draw, para, bw)
+        gap = int(para.space_after * PT)
+        blocks.append((para, lines, gap))
+        total += sum(h for h, _ in lines) + gap
+    if blocks:
+        total -= blocks[-1][2]
+    y = y0 + {"top": 0, "middle": (bh - total) // 2, "bottom": bh - total}[el.anchor]
+    for para, lines, gap in blocks:
+        for lh, items in lines:
+            line_w = (items[-1][0] + draw.textlength(items[-1][1], font=items[-1][2])) if items else 0
+            dx = {"left": 0, "center": (bw - line_w) / 2, "right": bw - line_w}[para.align]
+            for x, text, font, color in items:
+                ascent = font.getmetrics()[0]
+                # baseline sits ~80% down the line box, like PowerPoint's single spacing
+                draw.text((x0 + dx + x, y + int(lh * 0.8) - ascent), text, font=font, fill=color)
+            y += lh
+        y += gap
+
+
+# ------------------------------------------------------------------ shapes
+
+def _draw_element(img: Image.Image, draw: ImageDraw.ImageDraw, el):
+    if isinstance(el, design.Rect):
+        box = [_px(el.x), _px(el.y), _px(el.x + el.w), _px(el.y + el.h)]
+        if el.radius:
+            draw.rounded_rectangle(box, radius=_px(el.radius), fill=_rgb(el.fill))
         else:
-            if line:
-                lines.append(line)
-            line = word
-    if line:
-        lines.append(line)
-    return lines or [""]
+            draw.rectangle(box, fill=_rgb(el.fill))
+    elif isinstance(el, design.Oval):
+        box = [_px(el.cx - el.r), _px(el.cy - el.r), _px(el.cx + el.r), _px(el.cy + el.r)]
+        if el.fill:
+            draw.ellipse(box, fill=_rgb(el.fill))
+        if el.line:
+            draw.ellipse(box, outline=_rgb(el.line), width=max(1, int(el.line_w * PT)))
+    elif isinstance(el, design.Arc):
+        box = [_px(el.cx - el.r), _px(el.cy - el.r), _px(el.cx + el.r), _px(el.cy + el.r)]
+        draw.arc(box, el.start, el.end, fill=_rgb(el.color), width=max(1, int(el.line_w * PT)))
+    elif isinstance(el, design.Line):
+        draw.line([_px(el.x1), _px(el.y1), _px(el.x2), _px(el.y2)], fill=_rgb(el.color),
+                  width=max(1, int(el.line_w * PT)))
+    elif isinstance(el, design.Image):
+        pic = _load_image(str(el.path), _px(el.w), _px(el.h))
+        img.paste(pic, (_px(el.x), _px(el.y)), pic)
+    elif isinstance(el, design.Text):
+        _draw_text(draw, el)
 
 
-def _text(draw, xy, text, *, kind="arial", bold=False, size=18, color, max_w=None, line_gap=0.35):
-    font = _font(kind, bold, size)
-    x, y = xy
-    lines = _wrap(draw, text, font, max_w) if max_w else [text]
-    lh = int(size * PT * (1 + line_gap))
-    for ln in lines:
-        draw.text((x, y), ln, font=font, fill=color)
-        y += lh
-    return y
+@lru_cache(maxsize=64)
+def _load_image(path: str, w: int, h: int) -> Image.Image:
+    return Image.open(path).convert("RGBA").resize((max(1, w), max(1, h)), Image.Resampling.LANCZOS)
 
 
-def _circle(draw, cx, cy, r, color, width=0):
-    box = [cx - r, cy - r, cx + r, cy + r]
-    if width:
-        draw.ellipse(box, outline=color, width=width)
-    else:
-        draw.ellipse(box, fill=color)
-
+# ------------------------------------------------------------------ public API
 
 def render_slide(plan: DeckPlan, index: int, template: str = "niq") -> Image.Image:
     """Render one slide at full 1920×1080 resolution."""
     if not 0 <= index < len(plan.slides):
         raise IndexError(f"slide index {index} out of range")
-    c = PALETTES.get(template, PALETTES["niq"])
-    total = len(plan.slides)
-    spec = plan.slides[index]
-    img = Image.new("RGB", (W, H), c["white"])
+    scene = design.layout_slide(plan, index, template)
+    img = Image.new("RGB", (W * SS, H * SS), _rgb(scene.background))
     draw = ImageDraw.Draw(img)
-    if spec.layout == "title":
-        _title(draw, plan, spec, c)
-    elif spec.layout == "section":
-        _section(draw, spec, c)
-    elif spec.layout == "closing":
-        _closing(draw, spec, c)
-    elif spec.layout == "cards" and spec.cards:
-        _cards(draw, spec, c, index + 1, total)
-    elif spec.layout == "stats" and spec.stats:
-        _stats(draw, spec, c, index + 1, total)
-    elif spec.layout == "compare" and (spec.compare_left or spec.compare_right):
-        _compare(draw, spec, c, index + 1, total)
-    else:
-        _content(draw, spec, c, index + 1, total)
-    return img
+    for el in scene.elements:
+        _draw_element(img, draw, el)
+    return img.resize((W, H), Image.Resampling.LANCZOS)
 
 
 def render_slide_preview(plan: DeckPlan, index: int, template: str = "niq",
@@ -127,128 +172,3 @@ def render_frames(plan: DeckPlan, out_dir: Path, template: str = "niq") -> List[
         render_slide(plan, i, template=template).save(str(path))
         frames.append(path)
     return frames
-
-
-def _title(draw, plan: DeckPlan, spec: Slide, c):
-    draw.rectangle([0, 0, W, H], fill=c["dark"])
-    _circle(draw, int(9.2 * IN + 2.3 * IN), int(1.4 * IN + 2.3 * IN), int(2.3 * IN), c["accent"], width=6)
-    _circle(draw, int(10.6 * IN + 0.75 * IN), int(4.6 * IN + 0.75 * IN), int(0.75 * IN), c["cyan"])
-    _circle(draw, int(8.7 * IN + 0.35 * IN), int(5.4 * IN + 0.35 * IN), int(0.35 * IN), c["white"], width=4)
-    _text(draw, (int(0.9 * IN), int(2.3 * IN)), spec.title or plan.deck_title,
-          bold=True, size=40, color=c["white"], max_w=int(8.0 * IN))
-    _text(draw, (int(0.9 * IN), int(4.3 * IN)), spec.subtitle or plan.subtitle,
-          kind="georgia_italic", size=20, color=c["cyan"], max_w=int(7.6 * IN))
-    _text(draw, (int(0.9 * IN), int(6.7 * IN)), "Narrated presentation · generated with NDS",
-          size=11, color=c["footer"])
-
-
-def _section(draw, spec: Slide, c):
-    draw.rectangle([0, 0, W, H], fill=c["accent"])
-    _circle(draw, int(-1.6 * IN + 2.6 * IN), int(4.4 * IN + 2.6 * IN), int(2.6 * IN), c["dark"])
-    _circle(draw, int(11.6 * IN + 1.7 * IN), int(-1.2 * IN + 1.7 * IN), int(1.7 * IN), c["accent2"], width=6)
-    _text(draw, (int(1.0 * IN), int(2.9 * IN)), spec.title, bold=True, size=36,
-          color=c["white"], max_w=int(11.0 * IN))
-    if spec.subtitle:
-        _text(draw, (int(1.0 * IN), int(4.5 * IN)), spec.subtitle, kind="georgia_italic",
-              size=18, color=c["white"], max_w=int(10.0 * IN))
-
-
-GREY_TXT = (85, 85, 85)
-CARD_TINT = (244, 246, 254)
-LABEL_TINT = (198, 208, 255)
-
-
-def _rounded(draw, box, color, radius=28):
-    draw.rounded_rectangle(box, radius=radius, fill=color)
-
-
-def _chrome(draw, spec: Slide, c, page_no: int, total: int):
-    """Shared header/footer for content-style slides (mirrors pptx_builder._header)."""
-    _circle(draw, int(12.35 * IN + 0.225 * IN), int(6.75 * IN + 0.225 * IN), int(0.225 * IN), c["accent"], width=4)
-    _text(draw, (int(0.65 * IN), int(0.42 * IN)), spec.title, bold=True, size=24,
-          color=c["dark"], max_w=int(11.9 * IN))
-    if spec.subtitle:
-        _text(draw, (int(0.65 * IN), int(1.05 * IN)), spec.subtitle, size=13,
-              color=GREY_TXT, max_w=int(11.9 * IN))
-    _text(draw, (int(0.65 * IN), int(6.98 * IN)), f"{page_no} / {total}", size=10, color=c["grey"])
-
-
-def _content(draw, spec: Slide, c, page_no: int, total: int):
-    _chrome(draw, spec, c, page_no, total)
-    y = int(1.85 * IN)
-    for b in spec.bullets:
-        _circle(draw, int(0.65 * IN) + 12, y + 18, 8, c["accent"])
-        y = _text(draw, (int(0.65 * IN) + 40, y), b, size=16, color=c["body"], max_w=int(11.2 * IN))
-        y += 32
-    _text(draw, (int(0.65 * IN), int(6.98 * IN)), "", size=10, color=c["grey"])
-
-
-def _cards(draw, spec: Slide, c, page_no: int, total: int):
-    _chrome(draw, spec, c, page_no, total)
-    cards = spec.cards[:4]
-    n = len(cards)
-    accents = [c["accent"], c["accent2"], c["dark"], c["accent"]]
-    gap = int(0.3 * IN)
-    total_w = int(12.0 * IN)
-    card_w = (total_w - gap * (n - 1)) // n
-    top, card_h = int(1.9 * IN), int(4.3 * IN)
-    for i, card in enumerate(cards):
-        left = int(0.65 * IN) + i * (card_w + gap)
-        _rounded(draw, [left, top, left + card_w, top + card_h], CARD_TINT)
-        pad = int(0.28 * IN)
-        _text(draw, (left + pad, top + int(0.25 * IN)), f"{i + 1:02d}", bold=True, size=28,
-              color=accents[i % len(accents)])
-        _text(draw, (left + pad, top + int(1.0 * IN)), card.title, bold=True, size=16,
-              color=c["dark"], max_w=card_w - pad * 2)
-        _text(draw, (left + pad, top + int(1.95 * IN)), card.desc, size=11,
-              color=GREY_TXT, max_w=card_w - pad * 2)
-
-
-def _stats(draw, spec: Slide, c, page_no: int, total: int):
-    _chrome(draw, spec, c, page_no, total)
-    stats = spec.stats[:5]
-    n = len(stats)
-    panel_top, panel_h = int(2.3 * IN), int(3.2 * IN)
-    left0 = int(0.65 * IN)
-    _rounded(draw, [left0, panel_top, left0 + int(12.0 * IN), panel_top + panel_h], c["dark"])
-    col_w = int(12.0 * IN) // n
-    for i, st in enumerate(stats):
-        left = left0 + i * col_w
-        _text(draw, (left + int(0.25 * IN), panel_top + int(0.85 * IN)), st.value, bold=True,
-              size=30, color=c["white"] if i % 2 == 0 else c["cyan"], max_w=col_w - int(0.5 * IN))
-        _text(draw, (left + int(0.25 * IN), panel_top + int(1.85 * IN)), st.label, size=11,
-              color=LABEL_TINT, max_w=col_w - int(0.5 * IN))
-
-
-def _compare(draw, spec: Slide, c, page_no: int, total: int):
-    _chrome(draw, spec, c, page_no, total)
-    panels = [(spec.compare_left, c["accent"]), (spec.compare_right, c["accent2"])]
-    top, head_h, body_h = int(1.9 * IN), int(0.6 * IN), int(4.0 * IN)
-    width = int(5.85 * IN)
-    for i, (side, accent) in enumerate(panels):
-        if side is None:
-            continue
-        left = int(0.65 * IN) + i * (width + int(0.3 * IN))
-        draw.rectangle([left, top, left + width, top + head_h], fill=accent)
-        _text(draw, (left + int(0.25 * IN), top + int(0.13 * IN)), side.heading, bold=True,
-              size=14, color=c["white"], max_w=width - int(0.5 * IN))
-        draw.rectangle([left, top + head_h, left + width, top + head_h + body_h], fill=CARD_TINT)
-        y = top + head_h + int(0.2 * IN)
-        for item in side.items:
-            _circle(draw, left + int(0.25 * IN) + 8, y + 14, 7, accent)
-            y = _text(draw, (left + int(0.25 * IN) + 32, y), item, size=13, color=c["body"],
-                      max_w=width - int(0.75 * IN))
-            y += 20
-
-
-def _closing(draw, spec: Slide, c):
-    draw.rectangle([0, 0, W, H], fill=c["dark"])
-    _circle(draw, int(10.4 * IN + 2.2 * IN), int(-1.8 * IN + 2.2 * IN), int(2.2 * IN), c["accent"], width=6)
-    _circle(draw, int(0.4 * IN + 0.55 * IN), int(5.9 * IN + 0.55 * IN), int(0.55 * IN), c["cyan"])
-    _text(draw, (int(0.9 * IN), int(2.2 * IN)), spec.title, bold=True, size=34,
-          color=c["white"], max_w=int(10.5 * IN))
-    y = int(3.8 * IN)
-    for b in spec.bullets:
-        _circle(draw, int(0.9 * IN) + 12, y + 16, 8, c["accent2"])
-        y = _text(draw, (int(0.9 * IN) + 40, y), b, size=16, color=c["white"], max_w=int(10.0 * IN))
-        y += 20

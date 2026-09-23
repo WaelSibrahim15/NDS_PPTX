@@ -61,7 +61,7 @@ Health check: `GET /health` → `{"ok": true}`.
 
 | Mode | Input | What NDS does |
 |---|---|---|
-| **Create (NDS design)** | `.docx` `.pdf` `.pptx` `.txt` `.md` | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the NIQ 2026 design language |
+| **Create (NDS design)** | `.docx` `.pdf` `.pptx` `.txt` `.md` | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the NIQ design system (from Claude Design) |
 | **Narrate my PowerPoint** | a finished `.pptx` | Design stays byte-identical; NDS writes the narration (polishing existing speaker notes where present), voices it, embeds audio |
 | **Enhance my PowerPoint** | a designed `.pptx` | Design is kept, and NDS adds: AI-generated imagery (only into detected empty regions), build-in motion + slide fades, and full narration/voice |
 
@@ -193,13 +193,23 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
 
 ### PPTX assembly (`pptx_builder.py`)
 
-- **NIQ 2026 palette** (exact brand theme hexes): navy `060A45`, bright blue
-  `2C6DF6`, cyan `31D1FF`, orange `EF5F17`, green `59AD00`, pink `EF5890`, amber
-  `FFB500`, body grey `555555`; Arial + Georgia-italic accents; signature circle
-  motif. A "neutral professional" template exists alongside.
-- **Layouts**: dark title/closing, blue section divider, and content-style slides
-  (bulleted content, numbered card grid, dark stat band, two-panel compare), all
-  sharing header chrome (title, kicker, page number, circle motif).
+- **Design** lives in `design.py`, taken from the NIQ design system in Claude
+  Design (tokens: deep blue `060A45`, bright blue `2D6DF6`, light blue `31D1FF`,
+  orange `EF5F17`, blue tint `B4CBF9`, grey panel `F2F2F2`, ink `555555`). Each
+  layout returns a list of shapes (rects, circles, arcs, lines, images, text) in
+  inches; `pptx_builder.py` turns them into PowerPoint shapes and `renderer.py`
+  draws the same list with Pillow for previews and MP4 frames, so they match.
+- **Layouts**: White cover with the circle motif and NIQ mark; section dividers
+  alternating Blue and Dark grounds with the arc motif; sidebar-plus-content
+  (Georgia statement title); feature cards (rounded Bright Blue header bar + NIQ
+  brand symbol, chosen by the drafter from `app/assets/symbols/`); one metric
+  callout plus supporting figures; Gray/Blue half panels for compare; Dark
+  closing. Content slides share the footer: NIQ mark, legal line, page number
+  above a hairline rule. A "neutral professional" template uses the same layouts
+  without NIQ branding.
+- **Assets**: `app/assets/logos` (NIQ mark PNGs), `app/assets/symbols` (24 NIQ
+  brand symbols, Bright Blue variant), `app/assets/fonts` (Liberation Sans/Serif,
+  SIL OFL, used by the renderer when Arial/Georgia are missing, e.g. on Railway).
 - **Audio embed**: each slide gets the audio as a media shape plus a hand-built
   `<p:timing>` tree that fires `playFrom(0.0)` on slide entry, and a
   `<p:transition advTm>` fade so the show auto-advances after narration + 1 s.
