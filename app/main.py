@@ -313,9 +313,6 @@ def start_draft(
     if not cfg.get("anthropic_api_key"):
         raise HTTPException(400, "No Anthropic API key saved yet — add it under Settings.")
 
-    # Enhance mode retired — same outcome as narrate (scripts from slide content).
-    if mode == "enhance":
-        mode = "narrate"
     if mode not in ("generate", "narrate"):
         raise HTTPException(400, f"Unknown mode '{mode}' — choose NDS design or narration.")
 
@@ -376,8 +373,6 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
         guidance = (guidance + "\nDesign requirements: " + opts["design_notes"]).strip()
     try:
         _check_cancel(job_id)
-        if opts.get("mode") == "enhance":
-            opts["mode"] = "narrate"
         job.update(status="drafting", step="Reading the document…", progress=10, eta_seconds=45)
 
         # Audio source → Whisper transcript, then continue as text (keep original file for slicing).
@@ -740,7 +735,6 @@ def _run_build(job_id: str, cfg: dict):
                        eta_seconds=8)
 
         safe_title = "".join(ch for ch in plan.deck_title if ch.isalnum() or ch in " -_")[:60].strip() or "NDS Deck"
-        enhancing = False  # Enhance/polish mode retired
         narrate = opts.get("mode") == "narrate"
         src_deck = _job_dir(job_id) / "source.pptx"
 
@@ -756,8 +750,7 @@ def _run_build(job_id: str, cfg: dict):
         if narrate:
             out = narrate_existing_pptx(
                 src_deck, [s.narration for s in plan.slides],
-                audio_files, _job_dir(job_id) / base_name,
-                animate=False)
+                audio_files, _job_dir(job_id) / base_name)
         else:
             out = build_deck(plan, audio_files, _job_dir(job_id) / base_name,
                              template=opts["template"])

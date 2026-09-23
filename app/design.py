@@ -23,7 +23,6 @@ LOGOS_DIR = ASSETS / "logos"
 
 W, H = 13.333, 7.5
 M = 0.39          # grid-margin (37.5px on the 1280px canvas)
-GUTTER = 0.2      # grid-gutter (18.9px)
 MARK_RATIO = 600 / 255   # NIQ mark PNG width / height
 
 
@@ -55,7 +54,6 @@ class Text:
     h: float
     paras: List[Para]
     anchor: str = "top"          # top | middle | bottom
-    group: Optional[int] = None
 
 
 @dataclass
@@ -66,7 +64,6 @@ class Rect:
     h: float
     fill: str
     radius: float = 0.0          # inches
-    group: Optional[int] = None
 
 
 @dataclass
@@ -77,7 +74,6 @@ class Oval:
     fill: Optional[str] = None
     line: Optional[str] = None
     line_w: float = 0.0          # points
-    group: Optional[int] = None
 
 
 @dataclass
@@ -89,7 +85,6 @@ class Arc:
     end: float
     color: str
     line_w: float                # points
-    group: Optional[int] = None
 
 
 @dataclass
@@ -100,7 +95,6 @@ class Line:
     y2: float
     color: str
     line_w: float = 0.75
-    group: Optional[int] = None
 
 
 @dataclass
@@ -110,7 +104,6 @@ class Image:
     y: float
     w: float
     h: float
-    group: Optional[int] = None
 
 
 @dataclass
@@ -280,21 +273,21 @@ def _cards_layout(sc: Scene, spec: Slide, c: dict, page: str):
     label_size = 16 if n <= 3 else 14
     for i, card in enumerate(cards):
         x = M + i * (cw + gap)
-        sc.add(Rect(x, top, cw, head_h, c["bright"], radius=0.11, group=i))
+        sc.add(Rect(x, top, cw, head_h, c["bright"], radius=0.11))
         icon = SYMBOLS_DIR / f"{card.icon}.png" if getattr(card, "icon", None) else None
         has_icon = bool(c["brand"] and icon and icon.exists())
         label_w = cw - 0.2 - (0.7 if has_icon else 0.2)
         sc.add(Text(x + 0.2, top, label_w, head_h,
                     [_p(card.title, label_size, c["white"], bold=True, line_spacing=0.95)],
-                    anchor="middle", group=i))
+                    anchor="middle"))
         if has_icon:
             d = 0.52
             cx, cy = x + cw - 0.14 - d / 2, top + head_h / 2
-            sc.add(Oval(cx, cy, d / 2, fill=c["white"], group=i))
+            sc.add(Oval(cx, cy, d / 2, fill=c["white"]))
             s = d * 0.8
-            sc.add(Image(icon, cx - s / 2, cy - s / 2, s, s, group=i))
+            sc.add(Image(icon, cx - s / 2, cy - s / 2, s, s))
         sc.add(Text(x, top + head_h + 0.25, cw, 3.4,
-                    [_p(card.desc, 16 if n <= 3 else 14, c["ink"], line_spacing=1.15)], group=i))
+                    [_p(card.desc, 16 if n <= 3 else 14, c["ink"], line_spacing=1.15)]))
     _footer(sc, c, "light", page)
 
 

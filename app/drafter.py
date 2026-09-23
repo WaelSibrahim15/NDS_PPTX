@@ -2,7 +2,7 @@
 from anthropic import Anthropic
 
 from .design import SYMBOLS
-from .models import DeckPlan
+from .models import DeckPlan, Slide
 
 MODEL = "claude-opus-4-8"
 
@@ -196,72 +196,6 @@ def draft_narration_for_existing(
     return narrations[: len(slides)]
 
 
-def draft_enhancements(
-    slides: list,
-    can_image: list,
-    *,
-    api_key: str,
-    language: str = "English",
-    guidance: str = "",
-    narration_style: str = "single",
-) -> tuple:
-    """For an existing deck being ENHANCED: one narration per slide, plus an
-    image prompt for each slide flagged in can_image where a photo would add
-    value (None otherwise). Returns (narrations, image_prompts)."""
-    from typing import List, Optional as Opt
-
-    from pydantic import BaseModel
-
-    class EnhancePlan(BaseModel):
-        narrations: List[str]
-        image_prompts: List[Opt[str]]
-
-    client = Anthropic(api_key=api_key)
-    blocks = []
-    for i, s in enumerate(slides):
-        block = f"--- Slide {s['index']} (image slot available: {'yes' if can_image[i] else 'NO'}) ---\n"
-        block += "\n".join(s["texts"])
-        if s["notes"]:
-            block += f"\n[Existing speaker notes]: {s['notes']}"
-        blocks.append(block)
-
-    user_prompt = (
-        f"Language for the narration: {language}\n"
-        + (f"User guidance: {guidance}\n" if guidance.strip() else "")
-        + (CONVERSATION_RULES if narration_style == "conversation" else "")
-        + "\nThis is an EXISTING, well-designed presentation being ENHANCED — the layout is "
-        "locked. Two jobs:\n"
-        "1. narrations: exactly one voice-over narration per slide, in slide order "
-        "(use existing speaker notes when present, else write 40-90 ear-friendly words "
-        "from the slide text, with natural transitions between slides).\n"
-        "2. image_prompts: for each slide, EITHER a short prompt (max 30 words) for one "
-        "photographic image that would genuinely strengthen the slide's message — "
-        "describe the scene only, e.g. 'European Commission building facade at dusk, "
-        "glass and flags' — OR null. Slides marked 'image slot available: NO' must be "
-        "null. Prefer null over a forced, generic image.\n"
-        f"Return exactly {len(slides)} narrations and {len(slides)} image_prompts.\n\n"
-        + "\n\n".join(blocks)
-    )
-    response = client.messages.parse(
-        model=MODEL,
-        max_tokens=16000,
-        thinking={"type": "adaptive"},
-        system=SYSTEM,
-        messages=[{"role": "user", "content": user_prompt}],
-        output_format=EnhancePlan,
-    )
-    if response.stop_reason == "refusal" or response.parsed_output is None:
-        raise RuntimeError("The model could not draft the enhancement plan. Please try again.")
-    narr = response.parsed_output.narrations
-    prompts = response.parsed_output.image_prompts
-    n = len(slides)
-    narr = (narr + [""] * n)[:n]
-    prompts = (prompts + [None] * n)[:n]
-    # hard guard: never image a slide without a free slot
-    prompts = [p if can_image[i] else None for i, p in enumerate(prompts)]
-    return narr, prompts
-
-
 def regenerate_slide(
     source_text: str,
     plan: DeckPlan,
@@ -272,10 +206,8 @@ def regenerate_slide(
     language: str = "English",
     narration_only: bool = False,
     narration_style: str = "single",
-) -> "Slide":
+) -> Slide:
     """Redraft a single slide, keeping the rest of the deck as context."""
-    from .models import Slide
-
     client = Anthropic(api_key=api_key)
     outline = "\n".join(
         f"{i + 1}. [{s.layout}] {s.title}" for i, s in enumerate(plan.slides)

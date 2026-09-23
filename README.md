@@ -17,7 +17,7 @@ calls are to the AI APIs you configure (Anthropic, OpenAI).
    | Key | Used for | Required? |
    |---|---|---|
    | Anthropic | drafting slides, narration, image concepts | yes |
-   | OpenAI | narration voices (TTS) + generated imagery (Enhance mode) | recommended — without it the offline macOS voice still works, images are skipped |
+   | OpenAI | narration voices (TTS) + transcription of audio uploads | recommended — without it the offline macOS voice or ElevenLabs still work |
    | ElevenLabs key + voice ID(s) | custom / cloned narration voices | optional — adds an **ElevenLabs** voice provider; several voice IDs can be comma-separated |
 
    Keys live only in `config.json` in this folder (chmod 600). That file is
@@ -34,7 +34,7 @@ Repo: push this `NDS/` folder as the GitHub repository root (e.g.
 [WaelSibrahim15/NDS_PPTX](https://github.com/WaelSibrahim15/NDS_PPTX)).
 
 1. In [Railway](https://railway.app): **New Project → Deploy from GitHub** → select
-   the repo. Railway picks up `Procfile` / `railway.toml` and starts:
+   the repo. Railway reads `railway.toml` and starts:
    `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 2. **Variables** (service → Variables):
 
@@ -57,13 +57,12 @@ Health check: `GET /health` → `{"ok": true}`.
 
 ---
 
-## The three modes
+## The two modes
 
 | Mode | Input | What NDS does |
 |---|---|---|
 | **Create (NDS design)** | `.docx` `.pdf` `.pptx` `.txt` `.md` | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the NIQ design system (from Claude Design) |
 | **Narrate my PowerPoint** | a finished `.pptx` | Design stays byte-identical; NDS writes the narration (polishing existing speaker notes where present), voices it, embeds audio |
-| **Enhance my PowerPoint** | a designed `.pptx` | Design is kept, and NDS adds: AI-generated imagery (only into detected empty regions), build-in motion + slide fades, and full narration/voice |
 
 All modes share the same flow: **1 · Source & options → 2 · Review & amend →
 3 · Progress & downloads** (the progress bar and download buttons appear directly
@@ -76,15 +75,15 @@ under the *Build* button). Every job is resumable via its URL
   podcast style, voiced with two different voices and stitched per slide).
 - **Language** — English, French, German, Spanish, Italian (slides + narration).
 - **Guidance** — free-text instructions to the drafter (length, tone, audience).
-- **NIQ design requirements** — extra design asks passed to whichever engine designs
-  or enriches visuals (hidden in Narrate mode where the design is locked).
+- **NIQ design requirements** — extra design asks passed to the drafter (hidden in
+  Narrate mode where the design is locked).
 
 ### The review step
 
 Each slide is an editable card: title/bullets (or read-only slide content in
-narrate/enhance modes, where the design is locked), the narration text, per-slide
+narrate mode, where the design is locked), the narration text, per-slide
 **Preview audio**, and **Regenerate…** with an optional instruction. Voice provider
-(OpenAI cloud / macOS offline), voice A/B and a sample player sit in the toolbar.
+(OpenAI / ElevenLabs cloud, macOS offline), voice A/B and sample players sit in the toolbar.
 Edits auto-save; rebuilds only re-voice slides whose narration changed.
 
 Below the slide cards, **Redraft whole deck** throws the current draft away and asks
@@ -105,12 +104,14 @@ NDS/
 │   ├── main.py             # FastAPI app: endpoints, job lifecycle, build orchestration
 │   ├── models.py           # Pydantic deck model (DeckPlan / Slide / Card / Stat / CompareSide)
 │   ├── extract.py          # text + per-slide extraction from docx/pdf/pptx/txt/md
-│   ├── drafter.py          # all Claude calls (drafting, narration, enhance plan, translation)
-│   ├── enhance.py          # Enhance mode: empty-region detection + OpenAI image generation
-│   ├── tts.py              # TTS providers, dialogue splitting, audio stitching
-│   ├── pptx_builder.py     # PPTX assembly: layouts, audio embed, timing XML
-│   ├── renderer.py         # Pillow renderer: 1920x1080 PNG frames (mirrors pptx_builder)
-│   └── video.py            # MP4 export using the bundled imageio-ffmpeg binary
+│   ├── drafter.py          # all Claude calls (drafting, narration, slide regeneration)
+│   ├── audio_source.py     # audio uploads: Whisper transcript + slicing the original recording
+│   ├── tts.py              # TTS providers (OpenAI, ElevenLabs, macOS), dialogue splitting, stitching
+│   ├── design.py           # slide layouts (NIQ design system), shared by the two backends below
+│   ├── pptx_builder.py     # PPTX assembly: draws design.py layouts, audio embed, timing XML
+│   ├── renderer.py         # Pillow renderer: draws design.py layouts as 1920x1080 PNG frames
+│   ├── video.py            # MP4 export using the bundled imageio-ffmpeg binary
+│   └── assets/             # NIQ logos, brand symbols, fallback fonts
 ├── static/index.html       # the whole UI (vanilla JS, no build step)
 └── jobs/<12-hex-id>/       # one folder per deck (see "Job anatomy")
 ```
@@ -127,8 +128,6 @@ Pillow (not LibreOffice), video is encoded by the ffmpeg binary that ships insid
 | `source.*` | the uploaded file |
 | `source_text.txt` | extracted text handed to Claude |
 | `deck.json` | the editable `DeckPlan` (layouts, titles, bullets, narration per slide) |
-| `enhance.json` | Enhance mode: per-slide image prompts + detected empty rectangles |
-| `enhanced.pptx` | Enhance mode: the design + inserted images, pre-narration |
 | `audio/<sha1>.mp3/.m4a` | per-narration audio cache |
 | `*.pptx` / `*.mp4` | the deliverables (narrated deck, video) |
 
@@ -171,8 +170,6 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
   Durables co-brand only when source requires it).
 - `draft_narration_for_existing` — one narration per slide of an uploaded deck,
   based on speaker notes when present.
-- `draft_enhancements` — Enhance mode: narrations **plus** a per-slide image prompt
-  (or `null`), only for slides the analyzer flagged as having a usable empty slot.
 - `regenerate_slide` — single-slide redraft with the deck outline as context;
   when the design is locked only the `narration` field may change.
 
@@ -214,43 +211,21 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
   `<p:timing>` tree that fires `playFrom(0.0)` on slide entry, and a
   `<p:transition advTm>` fade so the show auto-advances after narration + 1 s.
   Slide-element order (`cSld → clrMapOvr → transition → timing`) is enforced.
-- **Movements** (Enhance mode): the timing tree can carry per-shape **fade
-  entrance builds as siblings of one auto-firing group node** — each with an
-  absolute delay spread across the narration, so they run without clicks under
-  auto-advance. (An earlier design used click-gated main-sequence steps, which
-  blanked auto-playing shows — do not regress this.)
 - **`narrate_existing_pptx`** copies the uploaded deck and only adds notes,
   audio, timing — plus a monkeypatch for python-pptx ≤ 1.0.x
   (`_MediaParts._find_by_sha1` crashes on decks that already contain media).
 
-### Enhance mode (`enhance.py`)
-
-- `analyze_slides` rasterises every shape's bounding box onto a 64×36 grid and
-  finds the **largest empty rectangle** (histogram method). An image slot exists
-  only if the rect is ≥ 20 % of slide width × 25 % of height **and** the slide has
-  no picture yet — an added image can never overlap the original design; on dense
-  decks NDS correctly adds nothing.
-- `add_images` calls the OpenAI Images API (`gpt-image-1`, falling back to
-  `dall-e-3`), size picked from the rect's aspect ratio, appends a consistent
-  corporate-photography style suffix (no text/logos/charts), contain-fits the
-  result into the rect, capped at 6 images per deck. Image failures degrade to
-  "skip images", never fail the build.
-- The result is saved as `enhanced.pptx` and then flows through the normal
-  narrate pipeline with movements enabled.
-
 ### Video export (`video.py` + `renderer.py`)
 
-NDS-designed decks only: `renderer.py` re-draws every layout as 1920×1080 PNGs with
-Pillow (it deliberately mirrors `pptx_builder`'s geometry and palette — **keep the
-two in sync when changing layouts**), then ffmpeg concats per-slide segments
+NDS-designed decks only: `renderer.py` draws every `design.py` layout as 1920×1080
+PNGs with Pillow (the same layouts the PPTX uses, so they always match), then ffmpeg concats per-slide segments
 (frame + narration + 1 s tail) into one MP4. Uploaded decks have no frame
 source, so MP4 export is disabled for them.
 
 ### Build orchestration (`main.py::_run_build`)
 
-1. Voice every slide (cache-aware).
-2. Enhance mode: generate + insert images → `enhanced.pptx`.
-3. Assemble the narrated PPTX (movements on for Enhance).
+1. Voice every slide (cache-aware), or slice the original recording for audio uploads.
+2. Assemble the narrated PPTX.
 
 ---
 
@@ -258,12 +233,8 @@ source, so MP4 export is disabled for them.
 
 - **MP4 / video export** is limited to NDS-designed decks (no LibreOffice on this
   machine, by design).
-- **Entrance animations** (Enhance mode) are structurally valid and validator-clean,
-  but PowerPoint playback can't be verified on this machine — if content ever
-  appears blank during a show, disable the `animate=` flag in the enhance path.
 - The audio cache does not know about code changes — delete `jobs/<id>/audio/` to
   force re-voicing after modifying the TTS pipeline.
 - Uploaded decks keep their own slide size; NDS-designed decks are 13.333×7.5 in.
 - Conversation narration relies on the `Alex:`/`Sam:` names the drafter is
   instructed to use; custom speaker names work when they repeat or sit one per line.
-- HeyGen avatar export existed in an earlier version and has been **removed**.
