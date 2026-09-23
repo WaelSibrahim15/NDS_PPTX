@@ -925,6 +925,7 @@
           </div>
           <div class="span2">
             <button class="small ghost" id="sample-btn" type="button">▶ Sample voice</button>
+            <button class="small ghost" id="sample-btn2" type="button" style="display:none">▶ Sample voice B</button>
           </div>
         </div>
       </div>
@@ -1283,6 +1284,10 @@ $('provider').addEventListener('change', fillVoices);
 function updateStyleUI() {
   const conv = $('narration_style').value === 'conversation';
   $('voice2-wrap').style.display = conv ? 'block' : 'none';
+  $('sample-btn2').style.display = conv ? '' : 'none';
+  const sampleLabel = conv ? '▶ Sample voice A' : '▶ Sample voice';
+  $('sample-btn').dataset.playLabel = sampleLabel;
+  if (playingBtn !== $('sample-btn')) $('sample-btn').textContent = sampleLabel;
   $('voice-label').textContent = conv ? 'Voice A (first speaker)' : 'Voice';
   syncStyleToggle();
   syncPipelinePreview();
@@ -1811,7 +1816,8 @@ $('redraft-go').addEventListener('click', async () => {
   showProgress('Redrafting…', true);
   const res = await fetch(`/api/jobs/${jobId}/redraft`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ instruction: $('redraft-instruction').value }),
+    body: JSON.stringify({ instruction: $('redraft-instruction').value,
+                           narration_style: $('narration_style').value }),
   });
   $('redraft-go').disabled = false;
   if (!res.ok) {
@@ -1842,6 +1848,11 @@ function syncRedraftUndo(job) {
 $('sample-btn').addEventListener('click', async () => {
   try {
     await playToggle($('sample-btn'), `/api/voices/${$('provider').value}/${$('voice').value}/sample`);
+  } catch (e) { toast(e.message, 'error'); }
+});
+$('sample-btn2').addEventListener('click', async () => {
+  try {
+    await playToggle($('sample-btn2'), `/api/voices/${$('provider').value}/${$('voice2').value}/sample`);
   } catch (e) { toast(e.message, 'error'); }
 });
 

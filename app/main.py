@@ -478,6 +478,8 @@ def start_redraft(job_id: str, payload: dict = Body(default={})):
     if not src_path.exists():
         raise HTTPException(400, "This job's source file is missing — start a new draft instead.")
     instruction = (payload.get("instruction") or "").strip()
+    if payload.get("narration_style") in ("single", "conversation"):
+        job["options"]["narration_style"] = payload["narration_style"]
     job.update(status="drafting", step="Redrafting the whole deck with Claude…",
                progress=5, error=None, eta_seconds=40, cancel_requested=False)
     _persist(job_id)
@@ -669,6 +671,16 @@ def start_build(job_id: str, payload: dict = Body(default={})):
     needs_tts = with_voice and not opts.get("from_audio")
     if needs_tts and (err := _tts_key_error(opts["provider"], cfg)):
         raise HTTPException(400, err)
+    if needs_tts and opts.get("narration_style") == "conversation":
+        plan = _load_plan(job_id)
+        if not any(len({slot for slot, _ in tts.split_dialogue(s.narration)}) > 1
+                   for s in plan.slides):
+            raise HTTPException(
+                400,
+                "Two-voice needs a dialogue script, but this draft was written for a single "
+                "narrator, so everything would use Voice A. Click \"Redraft whole deck\" "
+                "(with Two-voice selected) to rewrite the narration as a conversation.",
+            )
     job.update(status="building",
                step=("Slicing original audio…" if (with_voice and opts.get("from_audio"))
                      else "Preparing narration…" if with_voice else "Preparing PPTX draft…"),
