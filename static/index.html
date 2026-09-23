@@ -1005,7 +1005,7 @@
     <details id="settings">
       <summary>Settings — API keys</summary>
       <p class="hint-line" id="settings-locked-note" style="display:none;margin-bottom:10px">
-        Keys are set by the server environment (e.g. Railway). Edit them there, not in this form.
+        Greyed-out fields are set by environment variables (e.g. Railway, or your shell). Edit those there; the other fields work here.
       </p>
       <label>Anthropic API key (drafting) <span class="keystate" id="ak-state"></span></label>
       <input type="password" id="ak" placeholder="sk-ant-…">
@@ -1246,10 +1246,19 @@ async function refreshConfig() {
   $('elv-state').textContent = cfg.elevenlabs_voice_ids ? '✓ ' + cfg.elevenlabs_voice_ids : '— not set';
   $('elv-state').className = 'keystate ' + (cfg.elevenlabs_voice_ids ? 'ok' : 'error');
   VOICE_LABELS = cfg.voice_labels || {};
+  const envKeys = cfg.env_keys || [];
   const locked = !!cfg.settings_locked;
-  $('settings-locked-note').style.display = locked ? 'block' : 'none';
+  $('settings-locked-note').style.display = envKeys.length ? 'block' : 'none';
   $('settings-local-note').style.display = locked ? 'none' : 'block';
-  for (const id of ['ak', 'ok', 'el', 'elv', 'save-keys']) $(id).disabled = locked;
+  const fields = { ak: 'anthropic_api_key', ok: 'openai_api_key',
+                   el: 'elevenlabs_api_key', elv: 'elevenlabs_voice_ids' };
+  for (const [id, key] of Object.entries(fields)) {
+    const fromEnv = envKeys.includes(key);
+    if (!('ph' in $(id).dataset)) $(id).dataset.ph = $(id).placeholder;
+    $(id).disabled = fromEnv;
+    $(id).placeholder = fromEnv ? 'set by environment variable' : $(id).dataset.ph;
+  }
+  $('save-keys').disabled = locked;
   if (!cfg.anthropic_key_set) $('settings').open = true;
   fillVoices();
 }

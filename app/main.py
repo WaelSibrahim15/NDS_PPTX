@@ -77,8 +77,10 @@ def _macos_tts_available() -> bool:
     return platform.system() == "Darwin"
 
 
-def _keys_from_env() -> bool:
-    return any(os.environ.get(name, "").strip() for name in ENV_KEY_MAP.values())
+def _env_managed_keys() -> list:
+    """Config keys whose value comes from an environment variable. Only these
+    are locked in the Settings form; the rest stay editable."""
+    return [key for key, name in ENV_KEY_MAP.items() if os.environ.get(name, "").strip()]
 
 
 def _app_password() -> str:
@@ -169,7 +171,8 @@ def get_config():
         "elevenlabs_voice_ids": ", ".join(el_ids),
         "voices": voices,
         "voice_labels": voice_labels,
-        "settings_locked": _keys_from_env(),
+        "env_keys": _env_managed_keys(),
+        "settings_locked": set(_env_managed_keys()) == set(ENV_KEY_MAP),
         "macos_tts": _macos_tts_available(),
     }
 
@@ -177,20 +180,22 @@ def get_config():
 @app.post("/api/settings")
 def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form(""),
                  elevenlabs_api_key: str = Form(""), elevenlabs_voice_ids: str = Form("")):
-    if _keys_from_env():
+    submitted = {
+        "anthropic_api_key": anthropic_api_key.strip(),
+        "openai_api_key": openai_api_key.strip(),
+        "elevenlabs_api_key": elevenlabs_api_key.strip(),
+        "elevenlabs_voice_ids": elevenlabs_voice_ids.strip(),
+    }
+    submitted = {k: v for k, v in submitted.items() if v}
+    env_keys = _env_managed_keys()
+    blocked = [k for k in submitted if k in env_keys]
+    if blocked and len(blocked) == len(submitted):
         raise HTTPException(
             403,
-            "API keys are managed by server environment variables — edit them in Railway, not here.",
+            "These keys are managed by server environment variables — edit them there, not here.",
         )
     cfg = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
-    if anthropic_api_key.strip():
-        cfg["anthropic_api_key"] = anthropic_api_key.strip()
-    if openai_api_key.strip():
-        cfg["openai_api_key"] = openai_api_key.strip()
-    if elevenlabs_api_key.strip():
-        cfg["elevenlabs_api_key"] = elevenlabs_api_key.strip()
-    if elevenlabs_voice_ids.strip():
-        cfg["elevenlabs_voice_ids"] = elevenlabs_voice_ids.strip()
+    cfg.update({k: v for k, v in submitted.items() if k not in env_keys})
     save_config(cfg)
     return {"ok": True}
 
