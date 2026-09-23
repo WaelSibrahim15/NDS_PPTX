@@ -147,7 +147,12 @@ _voice_names: dict = {}  # ElevenLabs voice ID -> display name
 
 def _elevenlabs_voice_ids(cfg: dict) -> list:
     raw = cfg.get("elevenlabs_voice_ids", "")
-    return [v.strip() for v in raw.replace("\n", ",").split(",") if v.strip()]
+    ids = []
+    for part in raw.replace("\n", ",").replace(";", ",").split(","):
+        vid = part.strip().strip("\"'").strip()  # tolerate quotes pasted into the value
+        if vid and vid not in ids:
+            ids.append(vid)
+    return ids
 
 
 @app.get("/api/config")
