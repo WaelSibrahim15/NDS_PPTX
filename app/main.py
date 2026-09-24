@@ -1092,4 +1092,15 @@ def delete_template(ref: str):
         _template_error(exc)
 
 
-app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
+class _PageFiles(StaticFiles):
+    """Static files, but browsers must re-check the page on every visit, so a
+    new deploy shows up without a hard refresh."""
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        if resp.media_type and resp.media_type.startswith("text/html"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/", _PageFiles(directory=ROOT / "static", html=True), name="static")
