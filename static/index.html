@@ -371,14 +371,42 @@
     color: #fff;
     margin-bottom: 20px;
   }
-  .compliance {
-    display: flex;
+  .design-picks { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .design-pick {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    margin-top: 12px;
-    font-size: 14px;
+    min-height: 38px;
+    padding: 0 14px 0 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.3);
     color: rgba(255,255,255,.88);
+    font-family: var(--head);
+    font-weight: 600;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: .15s ease;
   }
+  .design-pick::before {
+    content: "✓";
+    width: 18px; height: 18px;
+    flex: none;
+    border-radius: 3px;
+    border: 1.5px solid rgba(255,255,255,.55);
+    display: grid; place-items: center;
+    font-size: 12px;
+    color: transparent;
+  }
+  .design-pick:hover { background: rgba(255,255,255,.12); }
+  .design-pick[aria-pressed="true"] {
+    background: rgba(255,255,255,.16);
+    border-color: rgba(255,255,255,.7);
+    color: #fff;
+  }
+  .design-pick[aria-pressed="true"]::before { background: #fff; border-color: #fff; color: var(--blue); }
+  .design-count { font-weight: 500; letter-spacing: .04em; text-transform: none; color: rgba(255,255,255,.7); }
 
   .style-toggle {
     display: grid;
@@ -838,12 +866,9 @@
           <textarea id="guidance" rows="2" placeholder="e.g. 10 slides max, formal tone, audience: sales leadership"></textarea>
         </div>
         <div class="span2" id="design-notes-wrap">
-          <label class="field-label" for="design_notes">Design notes (optional)</label>
-          <textarea id="design_notes" rows="2" placeholder="e.g. one stats slide, compare layout for do/don't"></textarea>
-          <div class="compliance">
-            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
-            <span>NIQ PowerPoint compliance is applied automatically.</span>
-          </div>
+          <span class="field-label" id="dn-l">Design notes (optional) <span class="design-count" id="design-count"></span></span>
+          <div class="design-picks" id="design-picks" role="group" aria-labelledby="dn-l"></div>
+          <textarea id="design_notes" rows="2" aria-labelledby="dn-l" placeholder="Anything else? e.g. one compare slide on permitted vs prohibited uses"></textarea>
         </div>
       </div>
 
@@ -1161,6 +1186,52 @@ document.querySelectorAll('.mode-tile').forEach(t => {
   });
 });
 
+// Design notes: pick any of these, plus optional free text; all are sent as design_notes
+const DESIGN_PICKS = [
+  ['Executive summary up front', 'Put a one-slide executive summary right after the title slide.'],
+  ['Agenda slide', 'Add an agenda slide listing the main sections.'],
+  ['Section dividers', 'Use section slides to separate each major chapter.'],
+  ['Numbers on their own slide', 'Give key figures their own stats slides, most important number first.'],
+  ['Compare layouts', 'Use compare slides for do/don\'t, before/after or pros/cons.'],
+  ['Icon cards for pillars', 'Use card slides with icons for pillars, principles, options or workstreams.'],
+  ['Takeaway titles', 'Write every slide title as the takeaway, not the topic.'],
+  ['Max 3 bullets', 'Keep bullet slides to 3 short bullets at most.'],
+  ['Mix layouts', 'Never put two bullet slides in a row; vary the layouts.'],
+  ['Close with next steps', 'End with a slide of clear next steps and owners.'],
+];
+DESIGN_PICKS.forEach(([label, text]) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'design-pick';
+  b.textContent = label;
+  b.title = text;
+  b.dataset.note = text;
+  b.setAttribute('aria-pressed', 'false');
+  b.addEventListener('click', () => {
+    b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+    syncDesignCount();
+  });
+  $('design-picks').appendChild(b);
+});
+function syncDesignCount() {
+  const n = document.querySelectorAll('.design-pick[aria-pressed="true"]').length;
+  $('design-count').textContent = n ? `· ${n} selected` : '';
+}
+function designNotesValue() {
+  const picked = [...document.querySelectorAll('.design-pick[aria-pressed="true"]')].map(b => b.dataset.note);
+  const extra = $('design_notes').value.trim();
+  return [...picked, extra].filter(Boolean).join('\n');
+}
+function setDesignNotes(value) {
+  const lines = String(value || '').split('\n');
+  const notes = DESIGN_PICKS.map(([, text]) => text);
+  document.querySelectorAll('.design-pick').forEach(b => {
+    b.setAttribute('aria-pressed', lines.includes(b.dataset.note) ? 'true' : 'false');
+  });
+  $('design_notes').value = lines.filter(l => !notes.includes(l)).join('\n').trim();
+  syncDesignCount();
+}
+
 function syncStyleToggle() {
   const s = $('narration_style').value;
   document.querySelectorAll('#style-toggle button').forEach(b => {
@@ -1388,7 +1459,7 @@ $('go').addEventListener('click', async () => {
   fd.append('voice2', $('voice2').value || '');
   fd.append('narration_style', $('narration_style').value);
   fd.append('mode', $('mode').value);
-  fd.append('design_notes', $('design_notes').value);
+  fd.append('design_notes', designNotesValue());
   $('go').disabled = true;
   showProgress('Drafting…', true);
   const res = await fetch('/api/draft', { method: 'POST', body: fd });
@@ -1452,7 +1523,7 @@ function applyOptions(o) {
   if (o.voice) $('voice').value = o.voice;
   if (o.voice2) $('voice2').value = o.voice2;
   if (o.template) $('template').value = o.template;
-  if (o.design_notes) $('design_notes').value = o.design_notes;
+  if (o.design_notes) setDesignNotes(o.design_notes);
   syncStyleToggle();
   syncModeTiles();
 }
