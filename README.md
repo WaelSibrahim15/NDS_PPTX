@@ -46,9 +46,12 @@ Repo: push this `NDS/` folder as the GitHub repository root (e.g.
    | `ELEVENLABS_VOICE_ID` | with the key above | ElevenLabs voice ID (comma-separate several) |
    | `APP_PASSWORD` | strongly recommended | HTTP Basic Auth password (username `nds` or blank) |
    | `JOBS_DIR` | recommended | set to `/data/jobs` when using a volume |
+   | `TEMPLATES_DIR` | optional | where uploaded templates live; defaults to `<volume>/templates` |
 
 3. **Volume:** add a volume mounted at `/data`, with `JOBS_DIR=/data/jobs`, so
-   past decks survive redeploys.
+   past decks survive redeploys. Uploaded templates are stored on the same volume
+   automatically (`/data/templates`, from Railway's `RAILWAY_VOLUME_MOUNT_PATH`);
+   without a volume they are lost at every redeploy.
 4. **Resources:** ~2 GB RAM, **one replica** (jobs use in-process threads).
 5. Generate a Railway domain. Open the URL, enter the password, confirm Settings
    shows keys as saved (from env — the form is locked).
@@ -75,8 +78,34 @@ under the *Build* button). Every job is resumable via its URL
   podcast style, voiced with two different voices and stitched per slide).
 - **Language** — English, French, German, Spanish, Italian (slides + narration).
 - **Guidance** — free-text instructions to the drafter (length, tone, audience).
-- **NIQ design requirements** — extra design asks passed to the drafter (hidden in
-  Narrate mode where the design is locked).
+- **Template** — NIQ (built in), Neutral professional (built in), or one you
+  uploaded (see *Templates* below).
+- **Design notes** — pick any of 10 slide-design options and/or type your own;
+  passed to the drafter (hidden in Narrate mode where the design is locked).
+
+### Templates (upload from Claude Design)
+
+A template is a theme for NDS's seven layouts: nine colour roles, a main and an
+accent font, logos for light and dark slides, a footer line, optional brand
+symbols for feature cards, and brand rules for the drafter.
+
+1. In Claude Design, export the **design system** (not a single slide or page) as a
+   `.zip`. NDS reads `tokens.json`, `README.md`, `assets/Logos/`,
+   `assets/Symbols/` and `fonts/`. A bare `tokens.json` also works.
+2. **Studio → Template → Upload template.** NDS maps the tokens onto its colour
+   roles (Claude checks the mapping and turns the brand book into slide rules),
+   converts SVG logos and symbols to PNG, and fetches Google Fonts files for
+   previews when the export has none.
+3. **Review**: adjust colours, fonts, logos, footer (`{year}` becomes the current
+   year) and brand rules against four live sample slides, then **Save template**.
+   Nothing is stored until you save.
+4. **Manage templates** edits or deletes uploaded ones. Built-ins can't be changed.
+
+NIQ PowerPoint compliance rules go to the drafter **only** with the built-in NIQ
+template; other templates send their own brand rules. Each deck keeps a copy of its
+template in `jobs/<id>/template/`, so editing or deleting a template never changes
+decks already drafted. The PPTX names the template's fonts: the presenting computer
+needs them installed.
 
 ### The review step
 
@@ -108,6 +137,7 @@ NDS/
 │   ├── audio_source.py     # audio uploads: Whisper transcript + slicing the original recording
 │   ├── tts.py              # TTS providers (OpenAI, ElevenLabs, macOS), dialogue splitting, stitching
 │   ├── design.py           # slide layouts (NIQ design system), shared by the two backends below
+│   ├── themes.py           # templates: built-ins, Claude Design import, saved templates, job snapshots
 │   ├── pptx_builder.py     # PPTX assembly: draws design.py layouts, audio embed, timing XML
 │   ├── renderer.py         # Pillow renderer: draws design.py layouts as 1920x1080 PNG frames
 │   ├── video.py            # MP4 export using the bundled imageio-ffmpeg binary
@@ -146,6 +176,9 @@ Pillow (not LibreOffice), video is encoded by the ffmpeg binary that ships insid
 | `POST /api/jobs/{id}/export-video` | render the MP4 (NDS-designed decks only) |
 | `GET /api/jobs/{id}/download?name=` | primary deck, or a registered extra file by name (allowlisted) |
 | `GET /api/jobs` | Past-decks history |
+| `GET /api/templates` · `POST /api/templates/import` | list templates / read a Claude Design export into a draft |
+| `GET·PUT·DELETE /api/templates/{id}` | open, save (a draft becomes a template) or delete a template |
+| `POST /api/templates/{id}/logo` · `POST /api/templates/{id}/preview/{layout}.png` | upload a logo / sample slide with unsaved edits |
 
 Long work happens in daemon threads; the UI polls `GET /api/jobs/{id}` every 1.5 s.
 
@@ -158,8 +191,9 @@ Long work happens in daemon threads; the UI polls `GET /api/jobs/{id}` every 1.5
 All calls use `messages.parse` with **structured outputs** (Pydantic schemas) and
 adaptive thinking — no JSON parsing, invalid outputs are retried at the API layer.
 
-- `draft_deck` — document text → `DeckPlan`. The system prompt encodes the **NIQ
-  PowerPoint compliance checklist**: stay within the official NIQ visual system
+- `draft_deck` — document text → `DeckPlan`. With the NIQ template the system
+  prompt encodes the **NIQ PowerPoint compliance checklist**; other templates get
+  general slide rules plus the template's own brand rules. The NIQ checklist: stay within the official NIQ visual system
   (no invented masters/templates), NIQ blues + white dominant, secondary colors
   sparingly (not as backgrounds; grey tints OK), Arial/Georgia with restrained
   mixing, **sentence case** (no all-caps), strong contrast and white space, icons
@@ -203,7 +237,8 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
   callout plus supporting figures; Gray/Blue half panels for compare; Dark
   closing. Content slides share the footer: NIQ mark, legal line, page number
   above a hairline rule. A "neutral professional" template uses the same layouts
-  without NIQ branding.
+  without NIQ branding, and uploaded templates (`themes.py`) swap in their own
+  colours, fonts, logos, footer and symbols.
 - **Assets**: `app/assets/logos` (NIQ mark PNGs), `app/assets/symbols` (24 NIQ
   brand symbols, Bright Blue variant), `app/assets/fonts` (Liberation Sans/Serif,
   SIL OFL, used by the renderer when Arial/Georgia are missing, e.g. on Railway).

@@ -733,6 +733,98 @@
   .chat-redraft .note { flex-basis: 100%; font-size: 13px; }
   #add-slide { margin-top: 16px; }
 
+  /* ——— templates ——— */
+  .tpl-actions { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+  .linkbtn {
+    appearance: none; border: 0; background: none; padding: 2px 0;
+    color: #fff; font-family: var(--head); font-weight: 600; font-size: 12px;
+    letter-spacing: .04em; text-decoration: underline; text-underline-offset: 3px;
+    text-decoration-color: rgba(255,255,255,.45); cursor: pointer;
+  }
+  .linkbtn:hover { text-decoration-color: #fff; }
+  .linkbtn:disabled { opacity: .5; cursor: wait; }
+  dialog.tpl-dialog {
+    margin: auto;                      /* the page reset zeroes it; this re-centres the dialog */
+    width: min(1120px, calc(100% - 32px));
+    max-height: calc(100vh - 32px);
+    padding: 0;
+    border: 1px solid var(--glass-line);
+    border-radius: 28px;
+    color: #fff;
+    background: linear-gradient(165deg, #071254 0%, #142c96 55%, #2a4fc4 100%);
+    box-shadow: 0 30px 90px rgba(2,8,40,.6);
+  }
+  dialog.tpl-dialog::backdrop { background: rgba(2,8,40,.62); backdrop-filter: blur(4px); }
+  .tpl-inner { padding: 28px 32px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .tpl-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .tpl-top h2 { font-family: var(--head); font-weight: 700; font-size: 24px; flex: 1; min-width: 200px; }
+  .tpl-top .x { min-width: 40px; justify-content: center; padding: 0; }
+  .tpl-note { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.88); }
+  .tpl-note.warn { color: #ffd9a0; }
+  .tpl-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+  .tpl-fields { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .tpl-fields .field-label { margin-bottom: 8px; }
+  .tpl-fields .hint-line { font-size: 12.5px; margin-top: 6px; color: rgba(255,255,255,.75); }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .swatch {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 14px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.2);
+  }
+  .swatch input[type=color] {
+    width: 34px; height: 34px; flex: none; padding: 0; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 50%; background: none; cursor: pointer; overflow: hidden;
+  }
+  .swatch input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+  .swatch input[type=color]::-webkit-color-swatch { border: 0; border-radius: 50%; }
+  .swatch input[type=color]::-moz-color-swatch { border: 0; border-radius: 50%; }
+  .swatch .sw-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+  .swatch .sw-label { font-size: 12px; line-height: 1.25; color: rgba(255,255,255,.85); }
+  .swatch input[type=text] {
+    height: 30px; padding: 0 8px; border-radius: 8px; font-size: 13px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase;
+  }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .logo-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .logo-view {
+    height: 72px; border-radius: 14px; display: grid; place-items: center;
+    border: 1px solid rgba(255,255,255,.25); overflow: hidden; padding: 10px;
+  }
+  .logo-view.light { background: #fff; }
+  .logo-view.dark { background: var(--tpl-deep, #060a45); }
+  .logo-view img { max-height: 44px; max-width: 100%; object-fit: contain; }
+  .logo-view span { font-size: 12px; color: #6b728a; }
+  .logo-view.dark span { color: rgba(255,255,255,.6); }
+  .logo-row { display: flex; gap: 8px; align-items: center; }
+  .logo-row select { height: 38px; font-size: 13px; flex: 1; min-width: 0; }
+  .logo-row button { min-height: 38px; flex: none; }
+  .tpl-previews { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; position: sticky; top: 0; }
+  .tpl-previews figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  .tpl-previews img {
+    width: 100%; aspect-ratio: 16/9; border-radius: 12px; background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.25); object-fit: cover; transition: opacity .2s;
+  }
+  .tpl-previews img.loading { opacity: .5; }
+  .tpl-previews figcaption { font-size: 12px; color: rgba(255,255,255,.75); }
+  .tpl-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.22); }
+  .tpl-foot .spacer { flex: 1; }
+  .tpl-foot #tpl-save { min-height: 48px; padding: 0 26px; background: #fff; color: var(--blue); border-color: #fff; font-weight: 700; }
+  .tpl-foot #tpl-save:hover { background: #eaf0ff; }
+  .tpl-list { display: flex; flex-direction: column; gap: 10px; }
+  .tpl-row {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 14px 16px; border-radius: 18px;
+    background: var(--well); border: 1px solid var(--well-line);
+  }
+  .tpl-row .strip { display: flex; flex: none; }
+  .tpl-row .strip i { width: 16px; height: 28px; display: block; }
+  .tpl-row .strip i:first-child { border-radius: 6px 0 0 6px; }
+  .tpl-row .strip i:last-child { border-radius: 0 6px 6px 0; }
+  .tpl-row .nm { flex: 1; min-width: 140px; font-weight: 600; }
+  .tpl-row .tag { font-size: 12px; color: rgba(255,255,255,.7); }
+  .tpl-row .acts { display: flex; gap: 8px; }
+  .tpl-empty { font-size: 14px; color: rgba(255,255,255,.8); }
+
   @media (max-width: 1100px) {
     .nds-badge { width: 220px; height: 194px; }
     .nds-badge b { font-size: 50px; }
@@ -740,6 +832,8 @@
     .deco-bars, .deco-dots { display: none; }
   }
   @media (max-width: 980px) {
+    .tpl-grid { grid-template-columns: 1fr; }
+    .tpl-previews { position: static; }
     .workspace { grid-template-columns: 1fr; }
     .chat-body, .chat-meta { grid-template-columns: 1fr; }
     .row { grid-template-columns: 1fr; }
@@ -756,6 +850,8 @@
     .topnav::after { left: -16px; }
   }
   @media (max-width: 560px) {
+    .tpl-inner { padding: 20px 16px; }
+    .two-col, .tpl-previews { grid-template-columns: 1fr; }
     .shell { padding: 16px 16px 60px; }
     .topnav { gap: 18px; font-size: 12px; }
     .brand { font-size: 11px; }
@@ -853,6 +949,11 @@
             <option value="niq">NIQ (Claude Design)</option>
             <option value="neutral">Neutral professional</option>
           </select>
+          <div class="tpl-actions">
+            <button type="button" class="linkbtn" id="tpl-upload-btn">＋ Upload template</button>
+            <button type="button" class="linkbtn" id="tpl-manage-btn">Manage templates</button>
+            <input type="file" id="tpl-file" class="sr-only" accept=".zip,.json" tabindex="-1" aria-hidden="true">
+          </div>
         </div>
         <div>
           <label class="field-label" for="language">Language</label>
@@ -971,6 +1072,97 @@
   </section>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <dialog class="tpl-dialog" id="tpl-dialog" aria-labelledby="tpl-title">
+    <form method="dialog" class="tpl-inner" id="tpl-form">
+      <div class="tpl-top">
+        <span class="box-badge" style="color:var(--blue);background:#fff;border-color:#fff">Template</span>
+        <h2 id="tpl-title">Review imported template</h2>
+        <button type="button" class="small x" id="tpl-close" aria-label="Close">✕</button>
+      </div>
+      <p class="tpl-note" id="tpl-note"></p>
+      <div class="tpl-grid">
+        <div class="tpl-fields">
+          <div>
+            <label class="field-label" for="tpl-name">Name</label>
+            <input type="text" id="tpl-name" maxlength="60">
+          </div>
+          <div>
+            <span class="field-label">Colours</span>
+            <div class="swatches" id="tpl-swatches"></div>
+          </div>
+          <div class="two-col">
+            <div>
+              <label class="field-label" for="tpl-font-sans">Main font</label>
+              <input type="text" id="tpl-font-sans" maxlength="60">
+            </div>
+            <div>
+              <label class="field-label" for="tpl-font-serif">Accent font (kickers)</label>
+              <input type="text" id="tpl-font-serif" maxlength="60">
+            </div>
+          </div>
+          <p class="hint-line" id="tpl-font-hint" style="margin-top:-10px"></p>
+          <div class="two-col">
+            <div class="logo-box">
+              <span class="field-label" style="margin:0">Logo on light slides</span>
+              <div class="logo-view light" id="tpl-logo-light-view"></div>
+              <div class="logo-row">
+                <select id="tpl-logo-light" aria-label="Logo on light slides"></select>
+                <button type="button" class="small" data-logo-upload="light">Upload</button>
+              </div>
+            </div>
+            <div class="logo-box">
+              <span class="field-label" style="margin:0">Logo on dark slides</span>
+              <div class="logo-view dark" id="tpl-logo-dark-view"></div>
+              <div class="logo-row">
+                <select id="tpl-logo-dark" aria-label="Logo on dark slides"></select>
+                <button type="button" class="small" data-logo-upload="dark">Upload</button>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="tpl-logo-file" class="sr-only" accept=".png,.jpg,.jpeg,.webp,.svg" tabindex="-1" aria-hidden="true">
+          <div>
+            <label class="field-label" for="tpl-footer">Footer line</label>
+            <input type="text" id="tpl-footer" maxlength="160" placeholder="e.g. © {year} Acme Ltd. All rights reserved.">
+            <p class="hint-line">{year} becomes the current year. Leave empty for no footer text.</p>
+          </div>
+          <div>
+            <label class="field-label" for="tpl-rules">Brand rules</label>
+            <textarea id="tpl-rules" rows="7" placeholder="e.g. Sentence case titles. One message per slide. No red."></textarea>
+            <p class="hint-line">Claude follows these when it drafts a deck with this template.</p>
+          </div>
+        </div>
+        <div class="tpl-previews" id="tpl-previews">
+          <figure><img alt="Cover slide preview" data-layout="title"><figcaption>Cover</figcaption></figure>
+          <figure><img alt="Cards slide preview" data-layout="cards"><figcaption>Cards</figcaption></figure>
+          <figure><img alt="Numbers slide preview" data-layout="stats"><figcaption>Numbers</figcaption></figure>
+          <figure><img alt="Section slide preview" data-layout="section"><figcaption>Section</figcaption></figure>
+        </div>
+      </div>
+      <div class="tpl-foot">
+        <button type="button" class="small warn" id="tpl-delete">Delete template</button>
+        <span class="spacer"></span>
+        <button type="button" class="small" id="tpl-cancel">Cancel</button>
+        <button type="button" class="small" id="tpl-save">Save template</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="tpl-dialog" id="tpl-manage" aria-labelledby="tpl-manage-title" style="width:min(720px, calc(100% - 32px))">
+    <div class="tpl-inner">
+      <div class="tpl-top">
+        <span class="box-badge" style="color:var(--blue);background:#fff;border-color:#fff">Templates</span>
+        <h2 id="tpl-manage-title">Manage templates</h2>
+        <button type="button" class="small x" id="tpl-manage-close" aria-label="Close">✕</button>
+      </div>
+      <p class="tpl-note">Edit or delete the templates you uploaded. Decks you already drafted keep their own copy, so changes here don't alter them.</p>
+      <div class="tpl-list" id="tpl-list"></div>
+      <div class="tpl-foot">
+        <span class="spacer"></span>
+        <button type="button" class="small" id="tpl-manage-upload">＋ Upload template</button>
+      </div>
+    </div>
+  </dialog>
 
   <section class="panel" id="history-card" style="display:none">
     <div class="panel-head">
@@ -1522,7 +1714,7 @@ function applyOptions(o) {
   fillVoices();
   if (o.voice) $('voice').value = o.voice;
   if (o.voice2) $('voice2').value = o.voice2;
-  if (o.template) $('template').value = o.template;
+  if (o.template && [...$('template').options].some(x => x.value === o.template)) $('template').value = o.template;
   if (o.design_notes) setDesignNotes(o.design_notes);
   syncStyleToggle();
   syncModeTiles();
@@ -2021,8 +2213,283 @@ async function loadHistory() {
   });
 }
 
+// ——— templates: upload a Claude Design export, review, save, edit, delete
+const TPL_ROLES = ['white', 'deep', 'bright', 'light', 'orange', 'tint', 'panel', 'ink', 'hairline'];
+const TPL_PREVIEW_LAYOUTS = ['title', 'cards', 'stats', 'section'];
+let TEMPLATES = [];
+let tplRef = null;       // id of the template or import draft being edited
+let tplIsDraft = false;
+let tplTimer = null;
+let tplPreviewSeq = 0;
+let tplLogoKind = null;
+
+async function refreshTemplates(selectId) {
+  try { TEMPLATES = await (await fetch('/api/templates')).json(); } catch { return; }
+  const sel = $('template');
+  const prev = selectId || sel.value;
+  sel.innerHTML = '';
+  const builtIn = TEMPLATES.filter(t => t.builtin);
+  const mine = TEMPLATES.filter(t => !t.builtin);
+  builtIn.forEach(t => sel.appendChild(new Option(t.name, t.id)));
+  if (mine.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Your templates';
+    mine.forEach(t => g.appendChild(new Option(t.name, t.id)));
+    sel.appendChild(g);
+  }
+  sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'niq';
+  sel.dispatchEvent(new Event('change'));
+}
+
+$('tpl-upload-btn').addEventListener('click', () => $('tpl-file').click());
+$('tpl-manage-upload').addEventListener('click', () => { $('tpl-manage').close(); $('tpl-file').click(); });
+$('tpl-file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const btn = $('tpl-upload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Reading template…';
+  toast('Reading ' + f.name + '. Claude is matching the colours; this takes about 20 seconds.');
+  try {
+    const fd = new FormData();
+    fd.append('file', f);
+    const res = await fetch('/api/templates/import', { method: 'POST', body: fd });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || 'Import failed');
+    openTemplateEditor(body);
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '＋ Upload template';
+  }
+});
+
+function buildSwatches(colors, labels) {
+  const box = $('tpl-swatches');
+  box.innerHTML = '';
+  TPL_ROLES.forEach(role => {
+    const v = (colors[role] || '#000000').toUpperCase();
+    const row = document.createElement('div');
+    row.className = 'swatch';
+    row.innerHTML = `
+      <input type="color" id="tpl-c-${role}" value="${v.toLowerCase()}" aria-label="${escapeHtml(labels[role] || role)}">
+      <div class="sw-text">
+        <span class="sw-label">${escapeHtml(labels[role] || role)}</span>
+        <input type="text" id="tpl-h-${role}" value="${v}" maxlength="7" aria-label="${escapeHtml(labels[role] || role)} hex">
+      </div>`;
+    const picker = row.querySelector('input[type=color]');
+    const hex = row.querySelector('input[type=text]');
+    picker.addEventListener('input', () => { hex.value = picker.value.toUpperCase(); queueTplPreview(); });
+    hex.addEventListener('input', () => {
+      const h = hex.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(h)) { picker.value = h.toLowerCase(); queueTplPreview(); }
+    });
+    box.appendChild(row);
+  });
+}
+
+function fillLogoSelect(kind, options, current) {
+  const sel = $('tpl-logo-' + kind);
+  sel.innerHTML = '';
+  sel.appendChild(new Option('No logo', ''));
+  options.forEach(p => sel.appendChild(new Option(p.replace(/^logos\//, ''), p)));
+  sel.value = options.includes(current) ? current : '';
+  showLogo(kind);
+}
+
+function showLogo(kind) {
+  const path = $('tpl-logo-' + kind).value;
+  const view = $('tpl-logo-' + kind + '-view');
+  view.innerHTML = path
+    ? `<img alt="" src="/api/templates/${tplRef}/file?path=${encodeURIComponent(path)}&t=${Date.now()}">`
+    : '<span>No logo</span>';
+}
+['light', 'dark'].forEach(kind => {
+  $('tpl-logo-' + kind).addEventListener('change', () => { showLogo(kind); queueTplPreview(); });
+});
+document.querySelectorAll('[data-logo-upload]').forEach(b => b.addEventListener('click', () => {
+  tplLogoKind = b.dataset.logoUpload;
+  $('tpl-logo-file').click();
+}));
+$('tpl-logo-file').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f || !tplRef) return;
+  const fd = new FormData();
+  fd.append('kind', tplLogoKind);
+  fd.append('file', f);
+  const res = await fetch(`/api/templates/${tplRef}/logo`, { method: 'POST', body: fd });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) { toast(body.detail || 'Logo upload failed', 'error'); return; }
+  const keep = { light: $('tpl-logo-light').value, dark: $('tpl-logo-dark').value };
+  keep[tplLogoKind] = body.path;
+  fillLogoSelect('light', body.template.logo_options, keep.light);
+  fillLogoSelect('dark', body.template.logo_options, keep.dark);
+  queueTplPreview();
+});
+
+function openTemplateEditor(t) {
+  tplRef = t.id;
+  tplIsDraft = !!t.draft;
+  $('tpl-title').textContent = tplIsDraft ? 'Review imported template' : 'Edit template';
+  const notes = [];
+  notes.push(tplIsDraft
+    ? 'NDS read these settings from your export. Check them against the previews, then save. Nothing is saved until you press Save template.'
+    : 'Changes apply to new decks. Decks you already drafted keep the version they were made with.');
+  if (t.import_note) notes.push(t.import_note);
+  $('tpl-note').textContent = notes.join(' ');
+  $('tpl-note').classList.toggle('warn', !!t.import_note);
+  $('tpl-name').value = t.name || '';
+  buildSwatches(t.colors || {}, t.role_labels || {});
+  $('tpl-font-sans').value = (t.fonts || {}).sans || 'Arial';
+  $('tpl-font-serif').value = (t.fonts || {}).serif || 'Georgia';
+  const nFiles = Object.keys(t.font_files || {}).length;
+  $('tpl-font-hint').textContent = (nFiles
+    ? 'Font files found for previews. '
+    : 'No font files found, so previews use Arial and Georgia look-alikes. ')
+    + 'The PPTX names these fonts; the presenting computer needs them installed.'
+    + (t.symbol_count ? ` ${t.symbol_count} brand symbols will appear on feature cards.` : '');
+  fillLogoSelect('light', t.logo_options || [], t.logo_light || '');
+  fillLogoSelect('dark', t.logo_options || [], t.logo_dark || '');
+  $('tpl-footer').value = t.footer || '';
+  $('tpl-rules').value = t.brand_rules || '';
+  $('tpl-delete').style.display = tplIsDraft ? 'none' : '';
+  $('tpl-save').textContent = tplIsDraft ? 'Save template' : 'Save changes';
+  if (!$('tpl-dialog').open) $('tpl-dialog').showModal();
+  updateTplPreviews();
+}
+
+function tplEdits() {
+  const colors = {};
+  TPL_ROLES.forEach(r => { colors[r] = $('tpl-h-' + r).value.trim().toUpperCase(); });
+  return {
+    name: $('tpl-name').value,
+    colors,
+    fonts: { sans: $('tpl-font-sans').value, serif: $('tpl-font-serif').value },
+    logo_light: $('tpl-logo-light').value,
+    logo_dark: $('tpl-logo-dark').value,
+    footer: $('tpl-footer').value,
+    brand_rules: $('tpl-rules').value,
+  };
+}
+
+function queueTplPreview() {
+  clearTimeout(tplTimer);
+  tplTimer = setTimeout(updateTplPreviews, 450);
+}
+['tpl-font-sans', 'tpl-font-serif', 'tpl-footer'].forEach(id => $(id).addEventListener('input', queueTplPreview));
+
+async function updateTplPreviews() {
+  if (!tplRef) return;
+  const seq = ++tplPreviewSeq;
+  const edits = tplEdits();
+  const deep = edits.colors.deep;
+  if (/^#[0-9A-F]{6}$/.test(deep)) $('tpl-logo-dark-view').style.setProperty('--tpl-deep', deep);
+  await Promise.all(TPL_PREVIEW_LAYOUTS.map(async layout => {
+    const img = document.querySelector(`#tpl-previews img[data-layout="${layout}"]`);
+    img.classList.add('loading');
+    try {
+      const res = await fetch(`/api/templates/${tplRef}/preview/${layout}.png`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(edits),
+      });
+      if (!res.ok || seq !== tplPreviewSeq) return;
+      const url = URL.createObjectURL(await res.blob());
+      if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+      img.dataset.url = url;
+      img.src = url;
+    } finally {
+      if (seq === tplPreviewSeq) img.classList.remove('loading');
+    }
+  }));
+}
+
+$('tpl-save').addEventListener('click', async () => {
+  const btn = $('tpl-save');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/templates/${tplRef}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tplEdits()),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || 'Save failed');
+    $('tpl-dialog').close();
+    await refreshTemplates(body.id);
+    toast(`Saved “${body.name}”. It's selected in Template.`, 'ok');
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+async function deleteTemplate(id, name) {
+  if (!confirm(`Delete the template “${name}”? Decks already drafted with it are not affected.`)) return false;
+  const res = await fetch('/api/templates/' + id, { method: 'DELETE' });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    toast(e.detail || 'Delete failed', 'error');
+    return false;
+  }
+  await refreshTemplates();
+  toast(`Deleted “${name}”`, 'ok');
+  return true;
+}
+
+$('tpl-delete').addEventListener('click', async () => {
+  if (await deleteTemplate(tplRef, $('tpl-name').value || 'template')) $('tpl-dialog').close();
+});
+$('tpl-cancel').addEventListener('click', () => $('tpl-dialog').close());
+$('tpl-close').addEventListener('click', () => $('tpl-dialog').close());
+$('tpl-manage-close').addEventListener('click', () => $('tpl-manage').close());
+
+async function renderTemplateList() {
+  await refreshTemplates();
+  const list = $('tpl-list');
+  list.innerHTML = '';
+  TEMPLATES.forEach(t => {
+    const row = document.createElement('div');
+    row.className = 'tpl-row';
+    const strip = ['deep', 'bright', 'light', 'orange', 'panel']
+      .map(r => `<i style="background:${escapeHtml((t.colors || {})[r] || '#888')}"></i>`).join('');
+    row.innerHTML = `<span class="strip" aria-hidden="true">${strip}</span>
+      <span class="nm">${escapeHtml(t.name)}</span>
+      <span class="tag">${t.builtin ? 'Built in' : ''}</span>
+      <span class="acts"></span>`;
+    if (!t.builtin) {
+      const acts = row.querySelector('.acts');
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'small'; edit.textContent = 'Edit';
+      edit.onclick = async () => {
+        const res = await fetch('/api/templates/' + t.id);
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { toast(body.detail || 'Could not open template', 'error'); return; }
+        $('tpl-manage').close();
+        openTemplateEditor(body);
+      };
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'small warn'; del.textContent = 'Delete';
+      del.onclick = async () => { if (await deleteTemplate(t.id, t.name)) renderTemplateList(); };
+      acts.append(edit, del);
+    }
+    list.appendChild(row);
+  });
+  if (!TEMPLATES.some(t => !t.builtin)) {
+    const p = document.createElement('p');
+    p.className = 'tpl-empty';
+    p.textContent = 'No uploaded templates yet. Export a design system from Claude Design and upload its .zip.';
+    list.appendChild(p);
+  }
+}
+$('tpl-manage-btn').addEventListener('click', async () => {
+  await renderTemplateList();
+  $('tpl-manage').showModal();
+});
+
 (async function init() {
   await refreshConfig();
+  await refreshTemplates();
   updateModeUI();
   updateStyleUI();
   loadHistory();

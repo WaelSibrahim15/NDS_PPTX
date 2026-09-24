@@ -25,7 +25,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
-from . import extract, tts, audio_source
+from . import extract, tts, audio_source, themes
 from .drafter import (draft_deck, draft_narration_for_existing,
                       regenerate_slide)
 from .models import DeckPlan, Slide
@@ -207,6 +207,23 @@ def set_settings(anthropic_api_key: str = Form(""), openai_api_key: str = Form("
 
 # ------------------------------------------------------------ job persistence
 
+def _theme(job_id: str) -> dict:
+    """The job's template (its own snapshot for imported templates)."""
+    opts = _jobs[job_id].get("options") or {}
+    return themes.job_theme(opts.get("template") or "niq", _job_dir(job_id))
+
+
+def _check_template(ref: str):
+    if ref in themes.BUILTIN:
+        return
+    try:
+        if themes.folder_for(ref).parent == themes.SAVED:
+            return
+    except KeyError:
+        pass
+    raise HTTPException(400, "That template no longer exists. Pick another one in Studio.")
+
+
 def _job_dir(job_id: str) -> Path:
     return JOBS_DIR / job_id
 
@@ -315,6 +332,7 @@ def start_draft(
 
     if mode not in ("generate", "narrate"):
         raise HTTPException(400, f"Unknown mode '{mode}' — choose NDS design or narration.")
+    _check_template(template)
 
     pasted = (source_text or "").strip()
     has_file = bool(file and file.filename)
@@ -442,7 +460,8 @@ def _produce_plan(job_id: str, src_path: Path, cfg: dict, guidance: str) -> Deck
     job.update(step="Drafting slides and narration with Claude…", progress=30, eta_seconds=35)
     return draft_deck(text, api_key=cfg["anthropic_api_key"],
                       language=opts["language"], guidance=guidance,
-                      narration_style=opts.get("narration_style", "single"))
+                      narration_style=opts.get("narration_style", "single"),
+                      theme=_theme(job_id))
 
 
 def _redraft_source(job_id: str) -> Path:
@@ -574,6 +593,7 @@ def regen_slide(job_id: str, index: int, payload: dict = Body(default={})):
         api_key=cfg["anthropic_api_key"], language=opts["language"],
         narration_only=opts.get("mode") == "narrate",
         narration_style=opts.get("narration_style", "single"),
+        theme=None if opts.get("mode") == "narrate" else _theme(job_id),
     )
     if opts.get("mode") == "narrate":  # design locked — only narration may change
         old = plan.slides[index]
@@ -658,6 +678,8 @@ def start_build(job_id: str, payload: dict = Body(default={})):
         raise HTTPException(400, "Job is busy.")
     cfg = load_config()
     opts = job["options"]
+    if payload.get("template"):
+        _check_template(payload["template"])
     for k in ("provider", "voice", "voice2", "template", "narration_style"):
         if payload.get(k) is not None and payload.get(k) != "":
             opts[k] = payload[k]
@@ -753,7 +775,7 @@ def _run_build(job_id: str, cfg: dict):
                 audio_files, _job_dir(job_id) / base_name)
         else:
             out = build_deck(plan, audio_files, _job_dir(job_id) / base_name,
-                             template=opts["template"])
+                             template=_theme(job_id))
 
         job.update(status="done",
                    step="Done — download below" if with_voice else "Draft ready — download below (or add narration)",
@@ -810,7 +832,7 @@ def _run_video(job_id: str, cfg: dict):
 
         safe_title = "".join(ch for ch in plan.deck_title if ch.isalnum() or ch in " -_")[:60].strip() or "NDS Deck"
         out = export_mp4(plan, audio_files, _job_dir(job_id) / f"{safe_title}.mp4",
-                         template=opts["template"], progress=on_progress)
+                         template=_theme(job_id), progress=on_progress)
         job.update(status="done", step="Video ready — download below", progress=100, video=out.name,
                    cancel_requested=False)
     except JobCancelled:
@@ -921,9 +943,8 @@ def slide_preview(job_id: str, index: int):
     plan = _load_plan(job_id)
     if not 0 <= index < len(plan.slides):
         raise HTTPException(400, "No such slide.")
-    template = (job.get("options") or {}).get("template") or "niq"
     try:
-        img = render_slide_preview(plan, index, template=template, width=640)
+        img = render_slide_preview(plan, index, template=_theme(job_id), width=640)
     except Exception as exc:
         raise HTTPException(500, f"Preview failed: {exc}")
     buf = BytesIO()
@@ -948,6 +969,127 @@ def job_download(job_id: str, name: str = ""):
         path, filename=path.name,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
+
+
+# ------------------------------------------------------------------ templates
+
+_SAMPLE_PLAN = DeckPlan(
+    deck_title="Quarterly business review",
+    subtitle="How the new strategy is landing with customers",
+    slides=[
+        Slide(layout="title", title="Quarterly business review",
+              subtitle="How the new strategy is landing with customers", narration=""),
+        Slide(layout="cards", title="Three priorities carry the plan",
+              subtitle="One strategy, three places to win.", narration="",
+              cards=[{"title": "Grow core accounts", "desc": "Expand with the customers who already trust us.",
+                      "icon": "growth"},
+                     {"title": "Launch faster", "desc": "Cut the time from idea to shelf by a third.",
+                      "icon": "timer"},
+                     {"title": "Build the team", "desc": "Hire for the skills the plan needs next.",
+                      "icon": "teamwork"}]),
+        Slide(layout="stats", title="Revenue grew in every region", subtitle="Growth came from repeat customers.",
+              narration="", stats=[{"value": "+18%", "label": "revenue versus last year"},
+                                   {"value": "92%", "label": "customer retention"},
+                                   {"value": "4.6", "label": "average rating"}]),
+        Slide(layout="section", title="What comes next", narration=""),
+    ],
+)
+_SAMPLE_LAYOUTS = {s.layout: i for i, s in enumerate(_SAMPLE_PLAN.slides)}
+
+
+def _template_error(exc: Exception):
+    if isinstance(exc, KeyError):
+        raise HTTPException(404, "Template not found. It may have been deleted.")
+    raise HTTPException(400, str(exc))
+
+
+@app.get("/api/templates")
+def list_templates():
+    return themes.list_templates()
+
+
+@app.post("/api/templates/import")
+def import_template(file: UploadFile = File(...)):
+    """Read a Claude Design export into a draft for review (not saved yet)."""
+    themes.clear_stale_drafts()
+    cfg = load_config()
+    raw = file.file.read(themes.MAX_UPLOAD + 1)
+    try:
+        draft_id = themes.import_upload(file.filename or "", raw, cfg.get("anthropic_api_key", ""))
+        return themes.describe(draft_id)
+    except (ValueError, KeyError) as exc:
+        _template_error(exc)
+
+
+@app.get("/api/templates/{ref}")
+def get_template(ref: str):
+    if ref in themes.BUILTIN:
+        raise HTTPException(400, "Built-in templates can't be edited.")
+    try:
+        return themes.describe(ref)
+    except KeyError as exc:
+        _template_error(exc)
+
+
+@app.put("/api/templates/{ref}")
+def save_template(ref: str, payload: dict = Body(...)):
+    """Save review edits; an import draft becomes a saved template."""
+    if ref in themes.BUILTIN:
+        raise HTTPException(400, "Built-in templates can't be edited.")
+    try:
+        theme = themes.save_draft(ref, payload)
+        return {"id": theme["id"], "name": theme["name"]}
+    except (ValueError, KeyError) as exc:
+        _template_error(exc)
+
+
+@app.post("/api/templates/{ref}/logo")
+def upload_template_logo(ref: str, kind: str = Form(...), file: UploadFile = File(...)):
+    if ref in themes.BUILTIN:
+        raise HTTPException(400, "Built-in templates can't be edited.")
+    try:
+        rel = themes.set_logo(ref, kind, file.filename or "", file.file.read(10 * 1024 * 1024))
+        return {"path": rel, "template": themes.describe(ref)}
+    except (ValueError, KeyError) as exc:
+        _template_error(exc)
+
+
+@app.get("/api/templates/{ref}/file")
+def template_file(ref: str, path: str):
+    """A logo image of a template, for the review screen."""
+    try:
+        folder = themes.folder_for(ref)
+    except KeyError as exc:
+        _template_error(exc)
+    target = (folder / path).resolve()
+    if not path.startswith("logos/") or not target.is_relative_to(folder.resolve()) or not target.exists():
+        raise HTTPException(404, "File not found")
+    return FileResponse(target, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/templates/{ref}/preview/{layout}.png")
+def template_preview(ref: str, layout: str, edits: dict = Body(default={})):
+    """A sample slide drawn with the template and any unsaved review edits."""
+    if layout not in _SAMPLE_LAYOUTS:
+        raise HTTPException(400, "Unknown sample layout.")
+    try:
+        theme = themes.load(ref) if ref in themes.BUILTIN else themes.preview_theme(ref, edits)
+    except KeyError as exc:
+        _template_error(exc)
+    img = render_slide_preview(_SAMPLE_PLAN, _SAMPLE_LAYOUTS[layout], template=theme, width=480)
+    buf = BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    return Response(content=buf.getvalue(), media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.delete("/api/templates/{ref}")
+def delete_template(ref: str):
+    """Remove a template. Decks already drafted with it keep their own copy."""
+    try:
+        themes.delete(ref)
+        return {"ok": True}
+    except (ValueError, KeyError) as exc:
+        _template_error(exc)
 
 
 app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")

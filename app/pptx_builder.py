@@ -1,6 +1,6 @@
 """NDS — assemble the narrated .pptx from a deck plan + per-slide audio files.
 
-Slide design lives in design.py (the NIQ design system from Claude Design);
+Slide design lives in design.py, coloured by the chosen template (themes.py);
 this module turns those layouts into PowerPoint shapes and adds narration.
 """
 from pathlib import Path
@@ -43,8 +43,9 @@ def build_deck(
     plan: DeckPlan,
     audio_files: List[Optional[Path]],
     out_path: Path,
-    template: str = "niq",
+    template="niq",
 ) -> Path:
+    """template: a template id or a theme dict resolved by themes."""
     prs = Presentation()
     prs.slide_width = SLIDE_W
     prs.slide_height = SLIDE_H
@@ -71,7 +72,6 @@ def build_deck(
 
 # ------------------------------------------------------------ scene → shapes
 
-_FONTS = {"sans": "Arial", "serif": "Georgia"}
 _ALIGN = {"left": PP_ALIGN.LEFT, "center": PP_ALIGN.CENTER, "right": PP_ALIGN.RIGHT}
 _ANCHOR = {"top": MSO_ANCHOR.TOP, "middle": MSO_ANCHOR.MIDDLE, "bottom": MSO_ANCHOR.BOTTOM}
 
@@ -94,7 +94,7 @@ def _draw_scene(slide, scene: "design.Scene"):
     slide.background.fill.solid()
     slide.background.fill.fore_color.rgb = _rgb(scene.background)
     for el in scene.elements:
-        _drop_theme_style(_draw_element(slide, el))
+        _drop_theme_style(_draw_element(slide, el, scene.fonts))
 
 
 def _drop_theme_style(shp):
@@ -105,7 +105,7 @@ def _drop_theme_style(shp):
         shp._element.remove(style)
 
 
-def _draw_element(slide, el):
+def _draw_element(slide, el, fonts: dict):
     shapes = slide.shapes
     if isinstance(el, design.Rect):
         kind = MSO_SHAPE.ROUNDED_RECTANGLE if el.radius else MSO_SHAPE.RECTANGLE
@@ -159,7 +159,7 @@ def _draw_element(slide, el):
             for run in para.runs:
                 r = p.add_run()
                 r.text = run.text
-                r.font.name = _FONTS[run.font]
+                r.font.name = fonts.get(run.font) or "Arial"
                 r.font.size = Pt(run.size)
                 r.font.bold = run.bold
                 r.font.italic = run.italic

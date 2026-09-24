@@ -1,7 +1,7 @@
 """NDS — turn raw source text into a deck plan with narration, via the Claude API."""
 from anthropic import Anthropic
 
-from .design import SYMBOLS
+from . import themes
 from .models import DeckPlan, Slide
 
 MODEL = "claude-opus-4-8"
@@ -22,8 +22,7 @@ Layout vocabulary — VARY the layouts; a deck of nothing but bullet slides is a
 - "content": 3-6 short bullets (max ~12 words each). Fine for genuinely list-like material, but \
 never use it for more than two slides in a row.
 - "cards": 2-4 feature cards, each with a short "title" (2-5 words), a one-sentence "desc" and an \
-"icon": the NIQ brand symbol that best fits the card, chosen ONLY from: {symbols}. \
-Use each symbol at most once per slide; leave "icon" empty if none fits. \
+"icon": {icon_rule} \
 Perfect for pillars, principles, workstreams, options, personas.
 - "stats": 2-5 headline numbers, each with a "value" (e.g. "160PB+", "90%", "$7.4T") and a short \
 "label". Put the most important number FIRST: it becomes the slide's big callout. Use whenever the source contains strong figures — numbers deserve their own slide.
@@ -34,7 +33,20 @@ one-line kicker that frames the slide's message (max ~14 words) — e.g. "One un
 Trusted data at the core."
 - Populate ONLY the fields of the chosen layout (e.g. a "cards" slide has cards, empty bullets).
 
-NIQ PowerPoint compliance (this deck is for NielsenIQ — mandatory):
+{design_rules}Narration rules (the most important part):
+- Every slide gets a "narration" field: the exact words an artificial voice will speak while the \
+slide is shown.
+- Write for the ear, not the eye: complete sentences, spoken register, natural transitions \
+("Let's move on to...", "So what does this mean?").
+- Do NOT read the bullets verbatim — the narration explains and connects them.
+- Aim for 40-90 words of narration per content slide (roughly 20-40 seconds of speech); the title \
+slide gets a short welcome of 2-3 sentences.
+- Never include stage directions, markdown, emoji, or text in brackets — only speakable words.
+- Write narration in the requested language. Slide text follows the same language.
+
+Stay faithful to the source material; do not invent facts that are not in it."""
+
+NIQ_RULES = """NIQ PowerPoint compliance (this deck is for NielsenIQ — mandatory):
 Template & system:
 - Design within the official NIQ visual system that NDS renders (NIQ blues, Arial/Georgia, \
 approved layouts). Do NOT invent a new template, theme, footer system, or slide master.
@@ -73,20 +85,44 @@ motif). Use "compare" for do/don't, before/after, permitted/prohibited.
 - Spell out acronyms on first use. If featuring a quotation, keep it short and attributed.
 - Prefer fewer, sharper slides over dense ones. Stay an insight vehicle, not a data appendix.
 
-Narration rules (the most important part):
-- Every slide gets a "narration" field: the exact words an artificial voice will speak while the \
-slide is shown.
-- Write for the ear, not the eye: complete sentences, spoken register, natural transitions \
-("Let's move on to...", "So what does this mean?").
-- Do NOT read the bullets verbatim — the narration explains and connects them.
-- Aim for 40-90 words of narration per content slide (roughly 20-40 seconds of speech); the title \
-slide gets a short welcome of 2-3 sentences.
-- Never include stage directions, markdown, emoji, or text in brackets — only speakable words.
-- Write narration in the requested language. Slide text follows the same language.
+"""
 
-Stay faithful to the source material; do not invent facts that are not in it."""
+TEMPLATE_RULES = """Design rules (a custom template renders the deck):
+- The template fixes colours, fonts, logo and footer; choose content and layouts only. Do not \
+invent logos, themes or footers.
+- Keep breathing room on every slide. Sparse text; the narration carries detail.
+- Deliver an INSIGHT, not a data dump. One clear takeaway per slide. Titles state the \
+takeaway, not a bare topic.
+- If figures are the main point, use the "stats" layout and let numbers dominate the slide.
+- Use "cards" for pillars, principles and workstreams; "compare" for do/don't, before/after.
+- Spell out acronyms on first use. Keep quotations short and attributed.
+{brand_rules}
+"""
 
-SYSTEM = SYSTEM_TEMPLATE.replace("{symbols}", ", ".join(SYMBOLS) or "(none available)")
+
+def system_prompt(theme=None) -> str:
+    """The drafting system prompt for a template (id or theme dict). NIQ
+    compliance rules apply only to the built-in NIQ template."""
+    t = themes.load(theme or "niq")
+    if t["symbols"]:
+        icon_rule = ("the brand symbol that best fits the card, chosen ONLY from: "
+                     + ", ".join(t["symbols"])
+                     + '. Use each symbol at most once per slide; leave "icon" empty if none fits.')
+    else:
+        icon_rule = 'leave "icon" empty (this template has no symbols).'
+    if t["niq"]:
+        rules = NIQ_RULES
+    else:
+        brand = t["brand_rules"].strip()
+        rules = TEMPLATE_RULES.replace(
+            "{brand_rules}",
+            ("\nBrand rules from the template (follow them where they apply to slide content):\n"
+             + brand + "\n") if brand else "")
+    return (SYSTEM_TEMPLATE.replace("{icon_rule}", icon_rule)
+            .replace("{design_rules}", rules))
+
+
+SYSTEM = system_prompt("niq")
 
 
 CONVERSATION_RULES = """
@@ -107,6 +143,7 @@ def draft_deck(
     language: str = "English",
     guidance: str = "",
     narration_style: str = "single",
+    theme=None,
 ) -> DeckPlan:
     client = Anthropic(api_key=api_key)
 
@@ -123,7 +160,7 @@ def draft_deck(
         model=MODEL,
         max_tokens=16000,
         thinking={"type": "adaptive"},
-        system=SYSTEM,
+        system=system_prompt(theme),
         messages=[{"role": "user", "content": user_prompt}],
         output_format=DeckPlan,
     )
@@ -206,6 +243,7 @@ def regenerate_slide(
     language: str = "English",
     narration_only: bool = False,
     narration_style: str = "single",
+    theme=None,
 ) -> Slide:
     """Redraft a single slide, keeping the rest of the deck as context."""
     client = Anthropic(api_key=api_key)
@@ -242,7 +280,7 @@ def regenerate_slide(
         model=MODEL,
         max_tokens=8000,
         thinking={"type": "adaptive"},
-        system=SYSTEM,
+        system=system_prompt(theme),
         messages=[{"role": "user", "content": user_prompt}],
         output_format=Slide,
     )

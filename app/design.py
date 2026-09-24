@@ -5,25 +5,24 @@ arcs, lines, images, text) in inches on the 13.333 x 7.5in slide. The PPTX
 builder turns them into PowerPoint shapes and the renderer draws them with
 Pillow for previews and MP4 frames, so both always show the same design.
 
-The "niq" template follows the NIQ design system published in Claude Design
-(Deep Blue and Bright Blue on White, Arial for clarity, Georgia for the human
-voice, rounded rectangles and circles, White / Blue / Dark grounds, NIQ mark
-plus legal line in the footer, NIQ brand symbols on feature cards).
+The layouts follow the NIQ design system published in Claude Design (rounded
+rectangles and circles, White / Blue / Dark grounds, logo plus legal line in
+the footer, brand symbols on feature cards). Colours, fonts, logos, footer and
+symbols come from the template (themes.py): the built-in "niq" and "neutral",
+or one imported from a Claude Design export.
 """
-import datetime
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
 
+from . import themes
 from .models import DeckPlan, Slide
 
-ASSETS = Path(__file__).resolve().parent / "assets"
-SYMBOLS_DIR = ASSETS / "symbols"
-LOGOS_DIR = ASSETS / "logos"
+ASSETS = themes.ASSETS
 
 W, H = 13.333, 7.5
 M = 0.39          # grid-margin (37.5px on the 1280px canvas)
-MARK_RATIO = 600 / 255   # NIQ mark PNG width / height
 
 
 # ------------------------------------------------------------------ elements
@@ -110,36 +109,30 @@ class Image:
 class Scene:
     background: str
     elements: list = field(default_factory=list)
+    fonts: dict = field(default_factory=lambda: {"sans": "Arial", "serif": "Georgia"})
+    font_files: dict = field(default_factory=dict)   # sans / sans_bold / serif / serif_italic → Path
 
     def add(self, *els):
         self.elements.extend(els)
 
 
-# ------------------------------------------------------------------ palettes
+# ------------------------------------------------------------------ helpers
 
-PALETTES = {
-    # Tokens from the NIQ design system (tokens.json).
-    "niq": {
-        "white": "#FFFFFF", "deep": "#060A45", "bright": "#2D6DF6", "light": "#31D1FF",
-        "orange": "#EF5F17", "tint": "#B4CBF9", "panel": "#F2F2F2", "ink": "#555555",
-        "hairline": "#B3B3B3", "brand": True,
-    },
-    "neutral": {
-        "white": "#FFFFFF", "deep": "#1F2A37", "bright": "#2F6FED", "light": "#38B2C4",
-        "orange": "#D97706", "tint": "#C9D6EA", "panel": "#F3F4F6", "ink": "#404040",
-        "hairline": "#C0C4CC", "brand": False,
-    },
-}
-
-SYMBOLS = sorted(p.stem for p in SYMBOLS_DIR.glob("*.png")) if SYMBOLS_DIR.exists() else []
+@lru_cache(maxsize=64)
+def _aspect(path: Path) -> float:
+    from PIL import Image as PILImage
+    with PILImage.open(path) as im:
+        return im.width / max(1, im.height)
 
 
-def palette(template: str) -> dict:
-    return PALETTES.get(template, PALETTES["niq"])
-
-
-def _legal() -> str:
-    return f"© {datetime.date.today().year} Nielsen Consumer LLC. All Rights Reserved."
+def _logo(path: Optional[Path], x: float, y: float, h: float, max_w: float):
+    """Logo image at (x, y), height h (shrunk to fit max_w); returns (element, width)."""
+    if not path:
+        return None, 0.0
+    w = h * _aspect(path)
+    if w > max_w:
+        h, w = h * max_w / w, max_w
+    return Image(path, x, y, w, h), w
 
 
 def _p(text, size, color, **kw) -> Para:
@@ -164,12 +157,12 @@ def _footer(sc: Scene, c: dict, ground: str, page: Optional[str]):
     rule_col = {"light": c["hairline"], "blue": c["tint"], "dark": c["bright"]}[ground]
     sc.add(Line(M, 6.98, W - M, 6.98, rule_col, 0.75))
     x = M
-    if c["brand"]:
-        mark = LOGOS_DIR / ("niq-mark-white.png" if on_color else "niq-mark-bright-blue.png")
-        mh = 0.17
-        sc.add(Image(mark, M, 7.1, mh * MARK_RATIO, mh))
-        x = M + mh * MARK_RATIO + 0.18
-        sc.add(Text(x, 7.08, 6.0, 0.22, [_p(_legal(), 7, text_col)], anchor="middle"))
+    logo, lw = _logo(c["logo_dark"] if on_color else c["logo_light"], M, 7.1, 0.17, 1.6)
+    if logo:
+        sc.add(logo)
+        x = M + lw + 0.18
+    if c["footer"]:
+        sc.add(Text(x, 7.08, 6.0, 0.22, [_p(c["footer"], 7, text_col)], anchor="middle"))
     if page:
         sc.add(Text(W - M - 1.5, 7.08, 1.5, 0.22, [_p(page, 7, text_col, align="right")],
                     anchor="middle"))
@@ -200,9 +193,9 @@ def _title_layout(sc: Scene, plan: DeckPlan, spec: Slide, c: dict):
         Oval(al + 1.7, 1.45, 0.6, fill=c["light"]),
         Oval(al + 1.7, 6.2, 0.28, fill=c["orange"]),
     )
-    if c["brand"]:
-        mh = 0.34
-        sc.add(Image(LOGOS_DIR / "niq-mark-bright-blue.png", M, 0.5, mh * MARK_RATIO, mh))
+    logo, _ = _logo(c["logo_light"], M, 0.5, 0.34, 2.6)
+    if logo:
+        sc.add(logo)
     title = spec.title or plan.deck_title
     size = _fit(title, [(28, 54), (55, 44), (90, 36), (999, 30)])
     sc.add(Text(M, 1.5, 6.4, 4.0, [_p(title, size, c["deep"], bold=True, line_spacing=0.9)],
@@ -210,8 +203,8 @@ def _title_layout(sc: Scene, plan: DeckPlan, spec: Slide, c: dict):
     sub = spec.subtitle or plan.subtitle
     if sub:
         sc.add(Text(M, 5.7, 6.3, 1.1, [_p(sub, 18, c["ink"], line_spacing=1.1)]))
-    if c["brand"]:
-        sc.add(Text(M, 7.08, 6.0, 0.22, [_p(_legal(), 7, c["ink"])], anchor="middle"))
+    if c["footer"]:
+        sc.add(Text(M, 7.08, 6.0, 0.22, [_p(c["footer"], 7, c["ink"])], anchor="middle"))
 
 
 def _section_layout(sc: Scene, spec: Slide, c: dict, number: int, page: str):
@@ -274,8 +267,9 @@ def _cards_layout(sc: Scene, spec: Slide, c: dict, page: str):
     for i, card in enumerate(cards):
         x = M + i * (cw + gap)
         sc.add(Rect(x, top, cw, head_h, c["bright"], radius=0.11))
-        icon = SYMBOLS_DIR / f"{card.icon}.png" if getattr(card, "icon", None) else None
-        has_icon = bool(c["brand"] and icon and icon.exists())
+        icon = (c["symbols_dir"] / f"{card.icon}.png"
+                if c["symbols_dir"] and getattr(card, "icon", None) else None)
+        has_icon = bool(icon and icon.exists())
         label_w = cw - 0.2 - (0.7 if has_icon else 0.2)
         sc.add(Text(x + 0.2, top, label_w, head_h,
                     [_p(card.title, label_size, c["white"], bold=True, line_spacing=0.95)],
@@ -368,12 +362,13 @@ def _closing_layout(sc: Scene, spec: Slide, c: dict):
 
 # ------------------------------------------------------------------ entry point
 
-def layout_slide(plan: DeckPlan, index: int, template: str = "niq") -> Scene:
-    c = palette(template)
+def layout_slide(plan: DeckPlan, index: int, template="niq") -> Scene:
+    """template: a template id, or a theme dict already resolved by themes."""
+    c = themes.load(template)
     spec = plan.slides[index]
     total = len(plan.slides)
     page = f"{index + 1} / {total}"
-    sc = Scene(background=c["white"])
+    sc = Scene(background=c["white"], fonts=dict(c["fonts"]), font_files=dict(c["font_files"]))
     if spec.layout == "title":
         _title_layout(sc, plan, spec, c)
     elif spec.layout == "section":
