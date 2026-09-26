@@ -75,8 +75,8 @@ The flow runs in steps: **01 Source → 02 Design → 03 Review slides → 04 Na
 05 Deliver**. Slides are drafted and reviewed first; the Narration step opens only after
 **Approve slides**. "Keep my design" and "Apply a template" keep the deck's slides, so
 they skip slide review and go straight to Narration (step 02 becomes *Instructions*).
-**Clear** (top right) forgets the open deck and every field and starts afresh; past
-decks stay in **Past decks**. Every job is resumable via its URL (`/?job=<id>`).
+**Clear** (top right) forgets the open deck and every field and starts afresh; saved decks
+are kept on the server. Every job is resumable via its URL (`/?job=<id>`).
 
 ### Options
 
@@ -217,7 +217,9 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
 
 ### Voices (`tts.py`)
 
-- **OpenAITTS** — model `gpt-4o-mini-tts`, 10 voices, mp3.
+- **OpenAITTS** — model `gpt-4o-mini-tts`, 13 voices (incl. `verse`, `marin`, `cedar`), mp3.
+- **ElevenLabsTTS** — 3 built-in voice IDs offered whenever an ElevenLabs key is set,
+  plus any IDs saved in Settings / `ELEVENLABS_VOICE_ID`.
 - **MacSayTTS** — offline `say` → `afconvert` → m4a; zero-key demo path.
 - **Two-voice conversations**: `split_dialogue` parses `Alex:`/`Sam:` scripts.
   Tags are recognised at line starts **and inline after sentence punctuation**
