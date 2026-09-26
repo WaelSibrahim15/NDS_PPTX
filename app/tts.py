@@ -15,6 +15,7 @@ class OpenAITTS:
     VOICES = [
         "alloy", "ash", "ballad", "coral", "echo",
         "fable", "nova", "onyx", "sage", "shimmer",
+        "verse", "marin", "cedar",
     ]
 
     def __init__(self, api_key: str):
