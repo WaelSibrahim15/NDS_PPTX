@@ -330,7 +330,6 @@ def start_draft(
     voice2: str = Form(""),
     narration_style: str = Form("single"),
     mode: str = Form("generate"),
-    design_notes: str = Form(""),
 ):
     cfg = load_config()
     if not cfg.get("anthropic_api_key"):
@@ -379,7 +378,6 @@ def start_draft(
         "options": {"language": language, "guidance": guidance, "template": template,
                     "provider": provider, "voice": voice, "voice2": voice2,
                     "narration_style": narration_style, "mode": mode,
-                    "design_notes": design_notes.strip(),
                     "from_audio": is_audio},
         "source_name": source_name,
     }
@@ -396,8 +394,6 @@ def _run_draft(job_id: str, src_path: Path, cfg: dict):
     # User's design requirements ride along with the guidance for whichever
     # engine designs the deck (NDS drafter).
     guidance = opts.get("guidance", "")
-    if opts.get("design_notes"):
-        guidance = (guidance + "\nDesign requirements: " + opts["design_notes"]).strip()
     try:
         _check_cancel(job_id)
         job.update(status="drafting", step="Reading the document…", progress=10, eta_seconds=45)
@@ -501,6 +497,8 @@ def start_redraft(job_id: str, payload: dict = Body(default={})):
     if not src_path.exists():
         raise HTTPException(400, "This job's source file is missing — start a new draft instead.")
     instruction = (payload.get("instruction") or "").strip()
+    if isinstance(payload.get("guidance"), str):
+        job["options"]["guidance"] = payload["guidance"].strip()
     if payload.get("narration_style") in ("single", "conversation"):
         job["options"]["narration_style"] = payload["narration_style"]
     job.update(status="drafting", step="Redrafting the whole deck with Claude…",
@@ -516,8 +514,6 @@ def _run_redraft(job_id: str, src_path: Path, cfg: dict, instruction: str):
     job_dir = _job_dir(job_id)
     opts = job["options"]
     guidance = opts.get("guidance", "")
-    if opts.get("design_notes"):
-        guidance = (guidance + "\nDesign requirements: " + opts["design_notes"]).strip()
     if opts.get("from_audio"):
         guidance = ((guidance + "\n" if guidance else "") + AUDIO_GUIDANCE).strip()
     if instruction:
@@ -542,6 +538,50 @@ def _run_redraft(job_id: str, src_path: Path, cfg: dict, instruction: str):
         job.update(status="review", step="Redraft failed — your previous draft is unchanged",
                    progress=100, error=str(exc), eta_seconds=None, cancel_requested=False)
     _persist(job_id)
+
+
+def _slide_texts(slide: Slide) -> list:
+    """The visible text of a planned slide, for narration writing."""
+    texts = [slide.title] + ([slide.subtitle] if slide.subtitle else []) + list(slide.bullets)
+    texts += [f"{c.title}: {c.desc}" for c in slide.cards or []]
+    texts += [f"{st.value} {st.label}" for st in slide.stats or []]
+    for side in (slide.compare_left, slide.compare_right):
+        if side:
+            texts += [side.heading] + list(side.items)
+    return [t for t in texts if t]
+
+
+@app.post("/api/jobs/{job_id}/narration/rewrite")
+def rewrite_narration(job_id: str, payload: dict = Body(default={})):
+    """Rewrite every slide's narration (slides untouched), e.g. after switching
+    to two voices or with a new instruction. Runs in the request: one Claude call."""
+    job = _get_job(job_id)
+    if job["status"] in ("drafting", "building", "rendering", "queued"):
+        raise HTTPException(400, "Job is busy.")
+    cfg = load_config()
+    if not cfg.get("anthropic_api_key"):
+        raise HTTPException(400, "No Anthropic API key saved.")
+    opts = job["options"]
+    if payload.get("narration_style") in ("single", "conversation"):
+        opts["narration_style"] = payload["narration_style"]
+    if isinstance(payload.get("guidance"), str):
+        opts["guidance"] = payload["guidance"].strip()
+    guidance = opts.get("guidance", "")
+    instruction = (payload.get("instruction") or "").strip()
+    if instruction:
+        guidance = ((guidance + "\n") if guidance else "") + "Narration instruction: " + instruction
+    plan = _load_plan(job_id)
+    slides = [{"index": i + 1, "texts": _slide_texts(s), "notes": ""}
+              for i, s in enumerate(plan.slides)]
+    narrations = draft_narration_for_existing(
+        slides, api_key=cfg["anthropic_api_key"], language=opts["language"],
+        guidance=guidance, narration_style=opts.get("narration_style", "single"))
+    for s, text in zip(plan.slides, narrations):
+        if text.strip():
+            s.narration = text
+    _save_plan(job_id, plan)
+    _persist(job_id)
+    return json.loads(plan.model_dump_json())
 
 
 @app.post("/api/jobs/{job_id}/redraft/undo")
@@ -597,14 +637,21 @@ def regen_slide(job_id: str, index: int, payload: dict = Body(default={})):
         raise HTTPException(400, "No such slide.")
     source_text = (_job_dir(job_id) / "source_text.txt").read_text()
     opts = job["options"]
+    if isinstance(payload.get("guidance"), str):  # the instructions box is live
+        opts["guidance"] = payload["guidance"].strip()
+    # Narration step (or a deck whose design is locked): only the narration changes.
+    narration_only = _keeps_deck(opts) or bool(payload.get("narration_only"))
+    if payload.get("narration_style") in ("single", "conversation"):
+        opts["narration_style"] = payload["narration_style"]
     new_slide = regenerate_slide(
         source_text, plan, index, payload.get("instruction", ""),
         api_key=cfg["anthropic_api_key"], language=opts["language"],
-        narration_only=_keeps_deck(opts),
+        guidance=opts.get("guidance", ""),
+        narration_only=narration_only,
         narration_style=opts.get("narration_style", "single"),
-        theme=None if _keeps_deck(opts) else _theme(job_id),
+        theme=None if narration_only else _theme(job_id),
     )
-    if _keeps_deck(opts):  # design locked — only narration may change
+    if narration_only:  # only narration may change
         old = plan.slides[index]
         old.narration = new_slide.narration
         new_slide = old
