@@ -30,6 +30,7 @@ from .drafter import (draft_deck, draft_narration_for_existing,
                       regenerate_slide)
 from .models import DeckPlan, Slide
 from .pptx_builder import build_deck, narrate_existing_pptx
+from .restyle import restyle_pptx
 from .renderer import render_slide_preview
 from .video import export_mp4
 
@@ -312,6 +313,11 @@ def _check_cancel(job_id: str):
 
 # ------------------------------------------------------------------ drafting
 
+def _keeps_deck(opts: dict) -> bool:
+    """The job keeps the uploaded deck's slides; only narration is drafted."""
+    return opts.get("mode") in ("narrate", "restyle")
+
+
 @app.post("/api/draft")
 def start_draft(
     file: UploadFile | None = File(None),
@@ -331,8 +337,9 @@ def start_draft(
         raise HTTPException(400, "No Anthropic API key saved yet — add it under Settings.")
 
     # generate: script → NDS deck · redesign: existing .pptx rebuilt by Claude in a
-    # template · narrate: existing .pptx kept as is, narration added.
-    if mode not in ("generate", "redesign", "narrate"):
+    # template · restyle: existing .pptx in the template's look, animations kept ·
+    # narrate: existing .pptx kept as is. restyle and narrate add narration only.
+    if mode not in ("generate", "redesign", "restyle", "narrate"):
         raise HTTPException(400, f"Unknown mode '{mode}' — start from a script or an existing deck.")
     _check_template(template)
 
@@ -341,7 +348,7 @@ def start_draft(
     suffix = Path(file.filename).suffix.lower() if has_file else ""
     is_audio = has_file and suffix in audio_source.AUDIO_SUFFIXES
 
-    if mode in ("narrate", "redesign"):
+    if mode in ("narrate", "restyle", "redesign"):
         if not has_file or suffix != ".pptx":
             raise HTTPException(400, "This option needs a .pptx file — upload the PowerPoint itself.")
     elif is_audio:
@@ -432,7 +439,7 @@ def _produce_plan(job_id: str, src_path: Path, cfg: dict, guidance: str) -> Deck
     job = _jobs[job_id]
     job_dir = _job_dir(job_id)
     opts = job["options"]
-    if opts.get("mode") == "narrate":
+    if _keeps_deck(opts):
         slides = extract.extract_slides(src_path)
         (job_dir / "source_text.txt").write_text(
             "\n\n".join(f"--- Slide {s['index']} ---\n" + "\n".join(s["texts"]) for s in slides)
@@ -472,7 +479,7 @@ def _redraft_source(job_id: str) -> Path:
     opts = _jobs[job_id]["options"]
     if opts.get("from_audio"):
         return job_dir / "source_from_audio.txt"
-    if opts.get("mode") == "narrate":
+    if _keeps_deck(opts):
         return job_dir / "source.pptx"
     for p in sorted(job_dir.iterdir()):
         if p.name.startswith("source.") and p.is_file():
@@ -593,11 +600,11 @@ def regen_slide(job_id: str, index: int, payload: dict = Body(default={})):
     new_slide = regenerate_slide(
         source_text, plan, index, payload.get("instruction", ""),
         api_key=cfg["anthropic_api_key"], language=opts["language"],
-        narration_only=opts.get("mode") == "narrate",
+        narration_only=_keeps_deck(opts),
         narration_style=opts.get("narration_style", "single"),
-        theme=None if opts.get("mode") == "narrate" else _theme(job_id),
+        theme=None if _keeps_deck(opts) else _theme(job_id),
     )
-    if opts.get("mode") == "narrate":  # design locked — only narration may change
+    if _keeps_deck(opts):  # design locked — only narration may change
         old = plan.slides[index]
         old.narration = new_slide.narration
         new_slide = old
@@ -759,8 +766,12 @@ def _run_build(job_id: str, cfg: dict):
                        eta_seconds=8)
 
         safe_title = "".join(ch for ch in plan.deck_title if ch.isalnum() or ch in " -_")[:60].strip() or "NDS Deck"
-        narrate = opts.get("mode") == "narrate"
+        narrate = _keeps_deck(opts)
         src_deck = _job_dir(job_id) / "source.pptx"
+        if opts.get("mode") == "restyle":
+            _check_cancel(job_id)
+            job.update(step="Applying the template to your deck…", progress=85, eta_seconds=10)
+            src_deck = restyle_pptx(src_deck, _theme(job_id), _job_dir(job_id) / "restyled.pptx")
 
         _check_cancel(job_id)
         job.update(step="Assembling the PowerPoint…", progress=90, eta_seconds=6)
@@ -769,6 +780,8 @@ def _run_build(job_id: str, cfg: dict):
                 base_name = f"{safe_title} (original audio).pptx"
             else:
                 base_name = f"{safe_title} (narrated).pptx" if narrate else f"{safe_title}.pptx"
+        elif opts.get("mode") == "restyle":
+            base_name = f"{safe_title} (restyled).pptx"
         else:
             base_name = f"{safe_title} (draft).pptx"
         if narrate:
@@ -796,7 +809,7 @@ def start_video(job_id: str, payload: dict = Body(default={})):
     job = _get_job(job_id)
     if job["status"] in ("drafting", "building", "rendering", "queued"):
         raise HTTPException(400, "Job is busy.")
-    if job["options"].get("mode") == "narrate":
+    if _keeps_deck(job["options"]):
         raise HTTPException(400, "MP4 export isn't available for narrated existing decks yet — "
                                  "PowerPoint itself can export those (File → Export → Create a Video).")
     cfg = load_config()
@@ -940,7 +953,7 @@ def delete_job(job_id: str):
 def slide_preview(job_id: str, index: int):
     """PNG thumbnail of one NDS-designed slide (generate mode only)."""
     job = _get_job(job_id)
-    if job.get("options", {}).get("mode") == "narrate":
+    if _keeps_deck(job.get("options", {})):
         raise HTTPException(400, "Preview is only available for NDS-designed decks.")
     plan = _load_plan(job_id)
     if not 0 <= index < len(plan.slides):

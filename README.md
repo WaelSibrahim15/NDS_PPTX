@@ -60,12 +60,16 @@ Health check: `GET /health` → `{"ok": true}`.
 
 ---
 
-## The two modes
+## Where you start
 
-| Mode | Input | What NDS does |
-|---|---|---|
-| **Create (NDS design)** | `.docx` `.pdf` `.pptx` `.txt` `.md` | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the NIQ design system (from Claude Design) |
-| **Narrate my PowerPoint** | a finished `.pptx` | Design stays byte-identical; NDS writes the narration (polishing existing speaker notes where present), voices it, embeds audio |
+**Feed the studio** asks where you start; the choice sets the job's `mode`.
+
+| Start | Option (`mode`) | Input | What NDS does |
+|---|---|---|---|
+| **A. From a script** | `generate` | `.docx` `.pdf` `.txt` `.md`, audio, or pasted text | Claude drafts a deck plan (layouts + narration); NDS renders slides itself in the chosen template |
+| **B. Existing deck** | `narrate`: keep my design | a finished `.pptx` | Design stays byte-identical; NDS writes the narration (polishing existing speaker notes where present), voices it, embeds audio |
+| | `restyle`: apply a template, keep animations | a finished `.pptx` | `restyle.py` changes only colours, fonts, backgrounds, footer and logo; shapes, positions, animations and transitions are untouched. Then as `narrate` |
+| | `redesign`: let Claude redesign | a finished `.pptx` | The deck's text goes through the `generate` pipeline; animations are not kept |
 
 All modes share the same flow: **1 · Source & options → 2 · Review & amend →
 3 · Progress & downloads** (the progress bar and download buttons appear directly
@@ -139,6 +143,7 @@ NDS/
 │   ├── design.py           # slide layouts (NIQ design system), shared by the two backends below
 │   ├── themes.py           # templates: built-ins, Claude Design import, saved templates, job snapshots
 │   ├── pptx_builder.py     # PPTX assembly: draws design.py layouts, audio embed, timing XML
+│   ├── restyle.py          # applies a template to an existing .pptx, animations kept
 │   ├── renderer.py         # Pillow renderer: draws design.py layouts as 1920x1080 PNG frames
 │   ├── video.py            # MP4 export using the bundled imageio-ffmpeg binary
 │   └── assets/             # NIQ logos, brand symbols, fallback fonts
@@ -247,7 +252,10 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
   `<p:transition advTm>` fade so the show auto-advances after narration + 1 s.
   Slide-element order (`cSld → clrMapOvr → transition → timing`) is enforced.
 - **`narrate_existing_pptx`** copies the uploaded deck and only adds notes,
-  audio, timing — plus a monkeypatch for python-pptx ≤ 1.0.x
+  audio, timing. A slide that already has animations keeps them: the audio is
+  merged into its own timing tree (joining an auto-start first step, or as a new
+  first step), and an existing transition, including PowerPoint's
+  `mc:AlternateContent` form, keeps its effect and only gets `advTm`. Plus a monkeypatch for python-pptx ≤ 1.0.x
   (`_MediaParts._find_by_sha1` crashes on decks that already contain media).
 
 ### Video export (`video.py` + `renderer.py`)
