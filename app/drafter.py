@@ -161,8 +161,6 @@ def system_prompt(theme=None, guidance: str = "") -> str:
                          .replace("{design_rules}", rules), guidance)
 
 
-SYSTEM = system_prompt("niq")
-
 NARRATION_SYSTEM = """You are the narration writer of NDS (Narrated Deck Studio). You write the \
 exact words an artificial voice speaks over each slide of a presentation.
 - Write for the ear: complete sentences, spoken register, natural transitions between slides.

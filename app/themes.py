@@ -354,7 +354,7 @@ def import_upload(filename: str, raw: bytes, api_key: str = "") -> str:
                 break
 
         logos = _collect_logos(base, folder)
-        symbols = _collect_symbols(base, folder)
+        _collect_symbols(base, folder)  # copies the brand symbols into the draft
         palette = heuristic_colors(tokens)
         fonts = heuristic_fonts(tokens)
         theme = {

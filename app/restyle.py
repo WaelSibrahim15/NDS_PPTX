@@ -10,7 +10,6 @@ parts (or inside the picture) that this module does not rewrite.
 """
 import colorsys
 import io
-import math
 import re
 from collections import Counter
 from pathlib import Path
