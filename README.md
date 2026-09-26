@@ -75,8 +75,8 @@ The flow runs in steps: **01 Source → 02 Design → 03 Review slides → 04 Na
 05 Deliver**. Slides are drafted and reviewed first; the Narration step opens only after
 **Approve slides**. "Keep my design" and "Apply a template" keep the deck's slides, so
 they skip slide review and go straight to Narration (step 02 becomes *Instructions*).
-**Clear** (top right) forgets the open deck and every field and starts afresh; past
-decks stay in **Past decks**. Every job is resumable via its URL (`/?job=<id>`).
+**Clear** (top right) forgets the open deck and every field and starts afresh; saved decks
+are kept on the server. Every job is resumable via its URL (`/?job=<id>`).
 
 ### Options
 
