@@ -545,6 +545,9 @@ def _slide_texts(slide: Slide) -> list:
     texts = [slide.title] + ([slide.subtitle] if slide.subtitle else []) + list(slide.bullets)
     texts += [f"{c.title}: {c.desc}" for c in slide.cards or []]
     texts += [f"{st.value} {st.label}" for st in slide.stats or []]
+    texts += [f"{st.title}: {st.desc}" for st in slide.steps or []]
+    texts += [f"{pt.label}: {pt.value:g}{(' ' + slide.chart_unit) if slide.chart_unit else ''}"
+              for pt in slide.chart or []]
     for side in (slide.compare_left, slide.compare_right):
         if side:
             texts += [side.heading] + list(side.items)

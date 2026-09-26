@@ -92,7 +92,7 @@ decks stay in **Past decks**. Every job is resumable via its URL (`/?job=<id>`).
 
 ### Templates (upload from Claude Design)
 
-A template is a theme for NDS's seven layouts: nine colour roles, a main and an
+A template is a theme for NDS's twelve layouts: nine colour roles, a main and an
 accent font, logos for light and dark slides, a footer line, optional brand
 symbols for feature cards, and brand rules for the drafter.
 
@@ -244,7 +244,14 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
   brand symbol, chosen by the drafter from `app/assets/symbols/`); one metric
   callout plus supporting figures; Gray/Blue half panels for compare; Dark
   closing. Content slides share the footer: NIQ mark, legal line, page number
-  above a hairline rule. A "neutral professional" template uses the same layouts
+  above a hairline rule. Newer layouts: agenda, timeline (steps on a line), chart
+  (bars or columns drawn from `chart` points, biggest value highlighted), quote and
+  statement.
+- **Variants**: most layouts have 2 or 3 visual versions (`design.VARIANTS`). A
+  slide's `variant` pins one; otherwise `pick_variant` rotates them, so a layout
+  used twice looks different, seeded by the deck title so decks differ from each
+  other. Review offers "Style: automatic / Style 1-3" per slide.
+  A "neutral professional" template uses the same layouts
   without NIQ branding, and uploaded templates (`themes.py`) swap in their own
   colours, fonts, logos, footer and symbols.
 - **Assets**: `app/assets/logos` (NIQ mark PNGs), `app/assets/symbols` (24 NIQ

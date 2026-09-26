@@ -249,7 +249,7 @@
   }
   .slide-card .head .ttl { color: var(--text); font-weight: 500; font-size: 17px; }
   .slide-card .spacer { flex: 1; }
-  .slide-card .layout { width: auto; min-width: 150px; height: 42px; border-radius: 999px; }
+  .slide-card .layout, .slide-card .variant { width: auto; min-width: 150px; height: 42px; border-radius: 999px; }
   .card-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 24px; }
   .card-body label:first-child { margin-top: 0; }
   .slide-thumb { width: 100%; border-radius: 14px; border: 1px solid var(--line); display: block; aspect-ratio: 16 / 9; object-fit: cover; background: #111; }
@@ -382,7 +382,7 @@
     .tpl-inner { padding: 22px 18px; }
     .step { scroll-margin-top: 130px; }
     .slide-card { padding: 18px; }
-    .slide-card .layout { min-width: 0; flex: 1; }
+    .slide-card .layout, .slide-card .variant { min-width: 0; flex: 1; }
     .slide-card .head .spacer { display: none; }
   }
 </style>
@@ -1258,7 +1258,13 @@ function renderNarration() {
   syncStyleToggle();
 }
 
-const LAYOUTS = ['title', 'section', 'content', 'cards', 'stats', 'compare', 'closing'];
+const LAYOUTS = ['title', 'agenda', 'section', 'content', 'cards', 'stats', 'chart', 'timeline',
+                 'compare', 'quote', 'statement', 'closing'];
+// How many visual versions each layout has (matches design.VARIANTS).
+const VARIANTS = { title: 3, section: 2, content: 3, cards: 3, stats: 3, compare: 2, closing: 2,
+                   quote: 2, statement: 2, agenda: 1, timeline: 2, chart: 2 };
+const TITLE_LABEL = { quote: 'Quote (no quotation marks)', statement: 'Statement' };
+const KICKER_LABEL = { quote: 'Who said it', statement: 'Supporting line (optional)' };
 
 function contentFields(s) {
   if (s.layout === 'cards') {
@@ -1273,13 +1279,27 @@ function contentFields(s) {
     const fmt = side => side ? [side.heading, ...(side.items || [])].join('\n') : '';
     return { kind: 'compare', left: fmt(s.compare_left), right: fmt(s.compare_right) };
   }
-  return { label: 'Bullets (one per line)', rows: 5, value: (s.bullets || []).join('\n'), kind: 'bullets' };
+  if (s.layout === 'timeline') {
+    const v = (s.steps || []).map(x => `${x.title} :: ${x.desc}`).join('\n');
+    return { label: 'Steps in order (one per line: Step :: description)', rows: 6, value: v, kind: 'steps' };
+  }
+  if (s.layout === 'chart') {
+    const v = (s.chart || []).map(x => `${x.label} :: ${x.value}`).join('\n');
+    return { label: 'Chart values (one per line: Label :: number)', rows: 6, value: v, kind: 'chart',
+             extra: (s.bullets || []).join('\n') };
+  }
+  if (s.layout === 'quote' || s.layout === 'statement') return { kind: 'none' };
+  const label = s.layout === 'agenda' ? 'Agenda items (one per line)'
+    : s.layout === 'closing' ? 'Takeaways (optional, one per line)' : 'Bullets (one per line)';
+  return { label, rows: 5, value: (s.bullets || []).join('\n'), kind: 'bullets' };
 }
 
 function slideText(s) {
   const lines = [...(s.bullets || [])];
   (s.cards || []).forEach(c => lines.push(`${c.title}: ${c.desc}`));
   (s.stats || []).forEach(c => lines.push(`${c.value} ${c.label}`));
+  (s.steps || []).forEach(c => lines.push(`${c.title}: ${c.desc}`));
+  (s.chart || []).forEach(c => lines.push(`${c.label}: ${c.value}${s.chart_unit ? ' ' + s.chart_unit : ''}`));
   [s.compare_left, s.compare_right].forEach(side => { if (side) lines.push(side.heading, ...(side.items || [])); });
   return lines;
 }
@@ -1291,13 +1311,25 @@ function slideCard(s, i) {
   const contentHtml = cf.kind === 'compare'
     ? `<label>Left panel (first line is the heading)</label><textarea class="f-cmp-left" rows="4"></textarea>
        <label>Right panel (first line is the heading)</label><textarea class="f-cmp-right" rows="4"></textarea>`
-    : `<label>${escapeHtml(cf.label)}</label><textarea class="f-content" rows="${cf.rows}"></textarea>`;
+    : cf.kind === 'none' ? ''
+    : `<label>${escapeHtml(cf.label)}</label><textarea class="f-content" rows="${cf.rows}"></textarea>`
+      + (cf.kind === 'chart'
+        ? `<label>Unit (e.g. %, $M, stores)</label><input type="text" class="f-unit">
+           <label>Takeaways beside the chart (optional, one per line)</label><textarea class="f-extra" rows="3"></textarea>`
+        : '');
+  const nv = VARIANTS[s.layout] || 1;
+  const variantHtml = nv > 1
+    ? `<select class="variant" aria-label="Style of slide ${i + 1}">
+         <option value="">Style: automatic</option>
+         ${Array.from({ length: nv }, (_, k) => `<option value="${k}" ${s.variant === k ? 'selected' : ''}>Style ${k + 1}</option>`).join('')}
+       </select>` : '';
   div.innerHTML = `
     <div class="head">
       <div class="num">${String(i + 1).padStart(2, '0')}</div>
       <select class="layout" aria-label="Layout of slide ${i + 1}">
         ${LAYOUTS.map(l => `<option ${l === s.layout ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
+      ${variantHtml}
       <div class="spacer"></div>
       <button type="button" class="iconbtn up" title="Move up" aria-label="Move up">↑</button>
       <button type="button" class="iconbtn down" title="Move down" aria-label="Move down">↓</button>
@@ -1306,9 +1338,9 @@ function slideCard(s, i) {
     <div class="card-body">
       <div><img class="slide-thumb loading" alt="Slide ${i + 1} preview" data-index="${i}"></div>
       <div>
-        <label>Slide title</label>
-        <input type="text" class="f-title">
-        <label>Kicker line (under the title)</label>
+        <label>${escapeHtml(TITLE_LABEL[s.layout] || 'Slide title')}</label>
+        ${s.layout === 'quote' || s.layout === 'statement' ? '<textarea class="f-title" rows="3"></textarea>' : '<input type="text" class="f-title">'}
+        <label>${escapeHtml(KICKER_LABEL[s.layout] || 'Kicker line (under the title)')}</label>
         <input type="text" class="f-kicker">
         ${contentHtml}
       </div>
@@ -1326,8 +1358,12 @@ function slideCard(s, i) {
   if (cf.kind === 'compare') {
     div.querySelector('.f-cmp-left').value = cf.left;
     div.querySelector('.f-cmp-right').value = cf.right;
-  } else {
+  } else if (cf.kind !== 'none') {
     div.querySelector('.f-content').value = cf.value;
+  }
+  if (cf.kind === 'chart') {
+    div.querySelector('.f-unit').value = s.chart_unit || '';
+    div.querySelector('.f-extra').value = cf.extra;
   }
   const thumb = div.querySelector('.slide-thumb');
   thumb.onload = () => thumb.classList.remove('loading');
@@ -1356,6 +1392,16 @@ function slideCard(s, i) {
       });
     } else if (cf.kind === 'stats') {
       s.stats = parsePairs(div.querySelector('.f-content').value).map(([v, l]) => ({ value: v, label: l }));
+    } else if (cf.kind === 'steps') {
+      s.steps = parsePairs(div.querySelector('.f-content').value).map(([t, d]) => ({ title: t, desc: d }));
+    } else if (cf.kind === 'chart') {
+      s.chart = parsePairs(div.querySelector('.f-content').value)
+        .map(([l, v]) => ({ label: l, value: parseFloat(String(v).replace(/[^0-9.\-]/g, '')) }))
+        .filter(pt => pt.label && Number.isFinite(pt.value));
+      s.chart_unit = div.querySelector('.f-unit').value.trim() || null;
+      s.bullets = div.querySelector('.f-extra').value.split('\n').map(x => x.trim()).filter(Boolean);
+    } else if (cf.kind === 'none') {
+      // quote / statement: title and kicker only
     } else {
       s.bullets = div.querySelector('.f-content').value.split('\n').map(x => x.trim()).filter(Boolean);
     }
@@ -1364,8 +1410,13 @@ function slideCard(s, i) {
   div.querySelectorAll('input:not(.f-instruction),textarea').forEach(el => el.addEventListener('input', sync));
   div.querySelector('.layout').addEventListener('change', () => {
     s.layout = div.querySelector('.layout').value;
+    s.variant = null;
     queueSave();
     renderReview();
+  });
+  div.querySelector('.variant')?.addEventListener('change', e => {
+    s.variant = e.target.value === '' ? null : Number(e.target.value);
+    queueSave();
   });
   div.querySelector('.up').onclick = () => move(i, -1);
   div.querySelector('.down').onclick = () => move(i, +1);

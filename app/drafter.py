@@ -28,10 +28,27 @@ Perfect for pillars, principles, workstreams, options, personas.
 "label". Put the most important number FIRST: it becomes the slide's big callout. Use whenever the source contains strong figures — numbers deserve their own slide.
 - "compare": two side-by-side panels (compare_left / compare_right), each with a "heading" and \
 3-6 short items. Perfect for do/don't, permitted/prohibited, before/after, pros/cons, us/them.
-- On every content-style slide ("content", "cards", "stats", "compare"), also set "subtitle" to a \
-one-line kicker that frames the slide's message (max ~14 words) — e.g. "One unified strategy. \
-Trusted data at the core."
+- "agenda": right after the title slide in decks of 8+ slides: "title" (e.g. "Agenda"), \
+"bullets" = 3-7 section names in order.
+- "timeline": a process, plan, roadmap or sequence: "steps" = 3-6 items in order, each with a \
+short "title" (1-3 words) and a one-line "desc". Use it whenever the source describes stages, \
+phases, milestones or dates.
+- "chart": when the source gives comparable figures (by region, year, product, segment): "chart" \
+= 2-8 points, each with a "label" and a numeric "value"; "chart_unit" such as "%", "$M" or \
+"stores"; optional "bullets" = 1-3 short takeaways shown beside the chart. Prefer "chart" over \
+"stats" when the numbers are a series to compare; use "stats" for unrelated headline figures.
+- "quote": a short, powerful quotation from the source: "title" = the quote (no quotation \
+marks), "subtitle" = who said it. Only use real quotes from the source.
+- "statement": one bold message on its own slide (a key insight, a turning point): "title" = the \
+statement (max ~15 words), optional "subtitle" = one supporting line. Use at most twice per deck.
+- On every content-style slide ("content", "cards", "stats", "compare", "timeline", "chart"), \
+also set "subtitle" to a one-line kicker that frames the slide's message (max ~14 words) — e.g. \
+"One unified strategy. Trusted data at the core."
 - Populate ONLY the fields of the chosen layout (e.g. a "cards" slide has cards, empty bullets).
+- Leave "variant" empty: NDS varies the look of repeated layouts on its own. Set it (0, 1 or 2) \
+only when the user asks for a specific look.
+- A strong deck mixes at least four different layouts and uses timeline, chart, quote or \
+statement slides wherever the material supports them.
 
 {design_rules}Narration rules (the most important part):
 - Every slide gets a "narration" field: the exact words an artificial voice will speak while the \
