@@ -25,10 +25,6 @@ class ChartPoint(BaseModel):
     value: float  # plotted value, in chart_unit
 
 
-LAYOUTS = ("title", "section", "content", "cards", "stats", "compare", "closing",
-           "quote", "statement", "agenda", "timeline", "chart")
-
-
 class Slide(BaseModel):
     layout: Literal["title", "section", "content", "cards", "stats", "compare", "closing",
                     "quote", "statement", "agenda", "timeline", "chart"]
