@@ -218,6 +218,8 @@ adaptive thinking — no JSON parsing, invalid outputs are retried at the API la
 ### Voices (`tts.py`)
 
 - **OpenAITTS** — model `gpt-4o-mini-tts`, 13 voices (incl. `verse`, `marin`, `cedar`), mp3.
+- **ElevenLabsTTS** — 3 built-in voice IDs offered whenever an ElevenLabs key is set,
+  plus any IDs saved in Settings / `ELEVENLABS_VOICE_ID`.
 - **MacSayTTS** — offline `say` → `afconvert` → m4a; zero-key demo path.
 - **Two-voice conversations**: `split_dialogue` parses `Alex:`/`Sam:` scripts.
   Tags are recognised at line starts **and inline after sentence punctuation**

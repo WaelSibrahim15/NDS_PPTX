@@ -162,9 +162,10 @@ def get_config():
     voices = {"openai": tts.OpenAITTS.VOICES}
     voice_labels = {}
     el_ids = _elevenlabs_voice_ids(cfg)
-    if cfg.get("elevenlabs_api_key") and el_ids:
-        voices["elevenlabs"] = el_ids
-        for vid in el_ids:
+    if cfg.get("elevenlabs_api_key"):
+        el_voices = tts.ElevenLabsTTS.VOICES + [v for v in el_ids if v not in tts.ElevenLabsTTS.VOICES]
+        voices["elevenlabs"] = el_voices
+        for vid in el_voices:
             if vid not in _voice_names:
                 _voice_names[vid] = tts.ElevenLabsTTS(cfg["elevenlabs_api_key"]).voice_name(vid)
             voice_labels[vid] = _voice_names[vid]

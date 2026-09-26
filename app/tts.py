@@ -40,6 +40,9 @@ class ElevenLabsTTS:
     Voices are addressed by voice ID (set in Settings or ELEVENLABS_VOICE_ID)."""
 
     name = "elevenlabs"
+    # Built-in voice IDs, always offered when an ElevenLabs key is set; IDs
+    # saved in Settings are added after these.
+    VOICES = ["GZ4PpFJV8ikEGUtBrjK7", "3C1zYzXNXNzrB66ON8rj", "VwC51uc4PUblWEJSPzeo"]
     API = "https://api.elevenlabs.io/v1"
     MODEL = "eleven_multilingual_v2"
 
