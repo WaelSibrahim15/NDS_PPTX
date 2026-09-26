@@ -11,6 +11,8 @@ parts (or inside the picture) that this module does not rewrite.
 import colorsys
 import io
 import math
+import re
+from collections import Counter
 from pathlib import Path
 from typing import Optional
 
@@ -66,37 +68,71 @@ def _luminance(rgb: tuple) -> float:
     return _lab(rgb)[0] / 100
 
 
-class ColorMap:
-    """Maps any colour to the nearest template colour (CIE Lab distance).
-    Greys only map to greys, so a neutral never turns into a brand hue."""
+def _grey(rgb: tuple) -> bool:
+    _, sat, val = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
+    return sat < 0.12 or val < 0.12
 
-    def __init__(self, theme: dict):
+
+def _hue(rgb: tuple) -> float:
+    return colorsys.rgb_to_hsv(*(c / 255 for c in rgb))[0] * 360
+
+
+class ColorMap:
+    """Maps the deck's colours onto template roles the way a designer would:
+    - the deck's most-used brand colour becomes the template's bright primary;
+    - other colours of that family map by lightness (dark → deep, pale → tint);
+    - colours far from that hue (accents) become the template accent;
+    - greys map by lightness to the template's greys, so neutrals stay neutral."""
+
+    CHROMA_ROLES = ["deep", "bright", "light", "tint"]
+    GREY_ROLES = ["white", "panel", "hairline", "ink", "deep"]
+    ACCENT_HUE_GAP = 75  # degrees from the primary hue that count as an accent
+
+    def __init__(self, theme: dict, usage: Counter):
         self.theme = theme
-        self.options = []
-        for role in PALETTE_ROLES:
-            if theme.get(role):
-                rgb = _rgb(theme[role])
-                self.options.append((role, theme[role].lstrip("#").upper(), _lab(rgb), self._grey(rgb)))
+        self.hex = {r: theme[r].lstrip("#").upper() for r in PALETTE_ROLES if theme.get(r)}
+        self.light = {r: _lab(_rgb(h))[0] for r, h in self.hex.items()}
+        chroma = [(n, c) for c, n in usage.items() if not _grey(_rgb(c))]
+        self.primary = max(chroma)[1] if chroma else None
+        self.primary_hue = _hue(_rgb(self.primary)) if self.primary else None
         self._cache = {}
 
-    @staticmethod
-    def _grey(rgb: tuple) -> bool:
-        _, s, v = colorsys.rgb_to_hsv(*(c / 255 for c in rgb))
-        return s < 0.12 or v < 0.12
+    def _by_lightness(self, rgb: tuple, roles: list) -> str:
+        light = _lab(rgb)[0]
+        roles = [r for r in roles if r in self.hex]
+        return min(roles, key=lambda r: abs(self.light[r] - light))
 
-    def nearest(self, hex_color: str) -> str:
+    def role(self, hex_color: str) -> str:
         key = hex_color.upper()
         if key not in self._cache:
             rgb = _rgb(key)
-            lab = _lab(rgb)
-            grey = self._grey(rgb)
-            pool = [o for o in self.options if o[3] == grey] or self.options
-            self._cache[key] = min(pool, key=lambda o: math.dist(lab, o[2]))[1]
+            if _grey(rgb):
+                role = self._by_lightness(rgb, self.GREY_ROLES)
+            elif key == self.primary:
+                role = "bright"
+            else:
+                gap = abs(_hue(rgb) - self.primary_hue) if self.primary_hue is not None else 0
+                gap = min(gap, 360 - gap)
+                role = "orange" if gap > self.ACCENT_HUE_GAP and "orange" in self.hex \
+                    else self._by_lightness(rgb, self.CHROMA_ROLES)
+            self._cache[key] = role
         return self._cache[key]
 
+    def nearest(self, hex_color: str) -> str:
+        return self.hex[self.role(hex_color)]
+
+    def background(self, hex_color: str) -> str:
+        """A background keeps its lightness, so the text on it stays readable:
+        greys become the template background or deep; colours the nearest in
+        lightness of deep, bright, tint and the background (never the accent)."""
+        rgb = _rgb(hex_color)
+        if _grey(rgb):
+            return self.hex["white" if _luminance(rgb) >= 0.5 else "deep"]
+        return self.hex[self._by_lightness(rgb, ["deep", "bright", "tint", "white"])]
+
     def ground(self, dark: bool) -> str:
-        """Background colour: the template's dark primary or its background."""
-        return self.theme["deep" if dark else "white"].lstrip("#").upper()
+        """Background for a picture: the template's dark primary or its background."""
+        return self.hex["deep" if dark else "white"]
 
 
 # ------------------------------------------------------------------ theme part
@@ -176,7 +212,7 @@ def _image_is_dark(part, rid: str) -> Optional[bool]:
     return _luminance(avg) < 0.5
 
 
-def _fill_is_dark(fill, part, cmap: ColorMap) -> Optional[bool]:
+def _fill_is_dark(fill, part) -> Optional[bool]:
     """Whether a background fill reads as dark; None when it can't be told."""
     if fill is None:
         return None
@@ -194,31 +230,75 @@ def _fill_is_dark(fill, part, cmap: ColorMap) -> Optional[bool]:
 
 
 def _restyle_background(cSld, part, cmap: ColorMap) -> Optional[bool]:
-    """Replace a background with the template's dark or light ground, keeping
-    the original's lightness so text drawn on it stays readable.
-    Returns whether the new background is dark (None when there is none)."""
+    """Give a background its template colour. Solid and gradient colours map to
+    their role; a picture becomes the template's dark or light ground, matching
+    the picture's lightness so the text on it stays readable. Backgrounds built
+    from theme colours already follow the new theme and are left as they are.
+    Returns whether the background is dark (None when the slide has none)."""
     bg = cSld.find("p:bg", NS)
     if bg is None:
         return None
-    bgPr = bg.find("p:bgPr", NS)
-    bgRef = bg.find("p:bgRef", NS)
-    if bgPr is not None:
-        dark = _fill_is_dark(bgPr, part, cmap)
-    elif bgRef is not None:
-        dark = _fill_is_dark(bgRef, part, cmap)
-    else:
+    fill = bg.find("p:bgPr", NS)
+    if fill is None:
+        fill = bg.find("p:bgRef", NS)
+    if fill is None:
         return None
-    if dark is None:
-        dark = False
+    blip = fill.find(".//a:blip", NS)
+    colors = [e.get("val") for e in fill.iter(qn("a:srgbClr")) if e.get("val")]
+    if blip is None and not colors:
+        return _fill_is_dark(fill, part)
+    if blip is not None:
+        new = cmap.ground(bool(_image_is_dark(part, blip.get(qn("r:embed")))))
+    else:
+        avg = tuple(sum(_rgb(c)[i] for c in colors) // len(colors) for i in range(3))
+        new = cmap.background("%02X%02X%02X" % avg)
     for child in list(bg):
         bg.remove(child)
     bg.append(etree.fromstring(
-        f'<p:bgPr xmlns:p="{P}" xmlns:a="{A}"><a:solidFill><a:srgbClr val="{cmap.ground(dark)}"/>'
+        f'<p:bgPr xmlns:p="{P}" xmlns:a="{A}"><a:solidFill><a:srgbClr val="{new}"/>'
         f'</a:solidFill><a:effectLst/></p:bgPr>'.encode()))
-    return dark
+    return _luminance(_rgb(new)) < 0.5
+
+
+def _usage(trees) -> Counter:
+    """How often each explicit colour is used across the deck (shapes, text,
+    backgrounds), so the dominant brand colour can be found."""
+    skip = (qn("a:effectLst"), qn("a:blip"), qn("a:effectDag"))
+    counts = Counter()
+    for tree in trees:
+        for el in tree.iter(qn("a:srgbClr")):
+            val = (el.get("val") or "").upper()
+            if len(val) == 6 and not _inside(el, *skip):
+                counts[val] += 1
+    return counts
 
 
 # ------------------------------------------------------------------ footer and logo
+
+PAGE_NUMBER = re.compile(r"^\s*(page\s*)?\d+(\s*(/|of)\s*\d+)?\s*$", re.I)
+
+
+def _replace_text(body, text: str):
+    """Set a text body to one line of text, keeping the first run's formatting."""
+    paras = body.findall("a:p", NS)
+    keep = paras[0] if paras else etree.SubElement(body, qn("a:p"))
+    for extra in paras[1:]:
+        body.remove(extra)
+    runs = keep.findall("a:r", NS)
+    rpr = runs[0].find("a:rPr", NS) if runs else None
+    for child in list(keep):
+        if child.tag in (qn("a:r"), qn("a:br"), qn("a:fld")):
+            keep.remove(child)
+    r = etree.Element(qn("a:r"))
+    if rpr is not None:
+        r.append(rpr)
+    etree.SubElement(r, qn("a:t")).text = text
+    end = keep.find("a:endParaRPr", NS)
+    if end is not None:
+        end.addprevious(r)
+    else:
+        keep.append(r)
+
 
 def _set_footer_placeholders(tree, text: str) -> bool:
     """Put the template footer into any footer placeholder. True if one exists."""
@@ -229,27 +309,43 @@ def _set_footer_placeholders(tree, text: str) -> bool:
             continue
         found = True
         body = sp.find("p:txBody", NS)
-        if body is None:
-            continue
-        paras = body.findall("a:p", NS)
-        keep = paras[0] if paras else etree.SubElement(body, qn("a:p"))
-        for extra in paras[1:]:
-            body.remove(extra)
-        runs = keep.findall("a:r", NS)
-        rpr = runs[0].find("a:rPr", NS) if runs else None
-        for child in list(keep):
-            if child.tag in (qn("a:r"), qn("a:br"), qn("a:fld")):
-                keep.remove(child)
-        r = etree.Element(qn("a:r"))
-        if rpr is not None:
-            r.append(rpr)
-        etree.SubElement(r, qn("a:t")).text = text
-        end = keep.find("a:endParaRPr", NS)
-        if end is not None:
-            end.addprevious(r)
-        else:
-            keep.append(r)
+        if body is not None:
+            _replace_text(body, text)
     return found
+
+
+def _footer_boxes(slide, slide_h: int) -> list:
+    """Plain text boxes that act as a footer: short text in the bottom band of
+    the slide that isn't a page number (and isn't a placeholder)."""
+    found = []
+    for shp in slide.shapes:
+        if shp.name in (LOGO_NAME, FOOTER_NAME) or shp.is_placeholder or not shp.has_text_frame:
+            continue
+        text = shp.text_frame.text.strip()
+        if not text or len(text) > 120 or PAGE_NUMBER.match(text):
+            continue
+        if shp.top is not None and shp.top >= slide_h * 0.9:
+            found.append(shp)
+    return found
+
+
+def _animated_ids(slide) -> set:
+    timing = slide._element.find(qn("p:timing"))
+    if timing is None:
+        return set()
+    return {int(t.get("spid")) for t in timing.iter(qn("p:spTgt")) if (t.get("spid") or "").isdigit()}
+
+
+def _slide_is_dark(slide, bg_dark: bool, slide_w: int, slide_h: int) -> bool:
+    """A shape filling the slide counts as its background."""
+    for shp in slide.shapes:
+        if shp.left is None or shp.width is None:
+            continue
+        if shp.width >= slide_w * 0.9 and shp.height >= slide_h * 0.9:
+            fill = shp._element.find("p:spPr/a:solidFill/a:srgbClr", NS)
+            if fill is not None:
+                bg_dark = _luminance(_rgb(fill.get("val"))) < 0.5
+    return bg_dark
 
 
 def _remove_named(slide, name: str):
@@ -261,14 +357,19 @@ def _remove_named(slide, name: str):
 def _add_logo_and_footer(slide, theme: dict, dark: bool, slide_w: int, slide_h: int,
                          footer_in_placeholder: bool):
     """Small logo bottom-left and the footer line beside it, on every slide.
-    Named shapes, so running the restyle again replaces instead of stacking."""
+    A footer the deck already has (placeholder or text box) gets the template
+    text instead of a second line. Named shapes, so running the restyle again
+    replaces instead of stacking."""
     _remove_named(slide, LOGO_NAME)
     _remove_named(slide, FOOTER_NAME)
     scale = slide_h / Emu(6858000)  # sizes are tuned for a 7.5in-high slide
     margin = int(Emu(457200) * scale)
     height = int(Emu(155448) * scale)  # 0.17in
+    gap = int(Emu(164592) * scale)
     y = slide_h - int(Emu(365760) * scale)
     x = margin
+    footer = theme.get("footer")
+    boxes = _footer_boxes(slide, slide_h) if footer else []
     logo = theme.get("logo_dark" if dark else "logo_light")
     if logo and Path(logo).exists():
         pic = slide.shapes.add_picture(str(logo), x, y, height=height)
@@ -276,9 +377,18 @@ def _add_logo_and_footer(slide, theme: dict, dark: bool, slide_w: int, slide_h: 
             ratio = int(Emu(1463040) * scale) / pic.width
             pic.width, pic.height = int(pic.width * ratio), int(pic.height * ratio)
         pic.name = LOGO_NAME
-        x += pic.width + int(Emu(164592) * scale)
-    footer = theme.get("footer")
-    if footer and not footer_in_placeholder:
+        x += pic.width + gap
+        # Make room: an old footer box starting under the logo moves right,
+        # unless an animation targets it (then nothing is moved).
+        animated = _animated_ids(slide)
+        for box in boxes:
+            if box.left < x and box.shape_id not in animated:
+                shift = x - box.left
+                box.left = x
+                box.width = max(int(box.width - shift), int(Emu(914400) * scale))
+    for box in boxes:
+        _replace_text(box.text_frame._txBody, footer)
+    if footer and not footer_in_placeholder and not boxes:
         box = slide.shapes.add_textbox(x, y - int(Emu(27432) * scale), int(Emu(5486400) * scale),
                                        int(Emu(201168) * scale))
         box.name = FOOTER_NAME
@@ -297,11 +407,15 @@ def _add_logo_and_footer(slide, theme: dict, dark: bool, slide_w: int, slide_h: 
 def restyle_pptx(src_path: Path, template, out_path: Path) -> Path:
     """Write a copy of src_path in the template's colours, fonts, backgrounds,
     footer and logo. Animations, transitions, shape ids and layout positions
-    are left exactly as they were."""
+    are left exactly as they were (an old footer box may shift right to make
+    room for the logo)."""
     theme = themes.load(template)
-    cmap = ColorMap(theme)
     prs = Presentation(str(src_path))
     footer = theme.get("footer")
+    parts = [m._element for m in prs.slide_masters] + \
+        [l._element for m in prs.slide_masters for l in m.slide_layouts] + \
+        [s._element for s in prs.slides]
+    cmap = ColorMap(theme, _usage(parts))
 
     seen_themes = set()
     master_dark = {}
@@ -331,12 +445,12 @@ def restyle_pptx(src_path: Path, template, out_path: Path) -> Path:
         dark = _restyle_background(stree.find("p:cSld", NS), slide.part, cmap)
         if dark is None:  # inherits: layout background, else the master's
             lbg = layout._element.find("p:cSld/p:bg", NS)
-            dark = _fill_is_dark(lbg.find("p:bgPr", NS), layout.part, cmap) \
-                if lbg is not None and lbg.find("p:bgPr", NS) is not None else None
+            dark = _fill_is_dark(lbg[0], layout.part) if lbg is not None and len(lbg) else None
             if dark is None:
                 dark = master_dark.get(id(layout.slide_master), False)
         _recolor(stree, cmap)
         _swap_fonts(stree, theme)
+        dark = _slide_is_dark(slide, dark, prs.slide_width, prs.slide_height)
         in_ph = _set_footer_placeholders(stree, footer) if footer else False
         _add_logo_and_footer(slide, theme, dark, prs.slide_width, prs.slide_height, in_ph)
 
