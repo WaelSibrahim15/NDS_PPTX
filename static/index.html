@@ -264,6 +264,41 @@
   }
   .cart-file.on { color: #fff; }
 
+  /* ——— start path ——— */
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .path-card {
+    display: flex; flex-direction: column; gap: 6px;
+    text-align: left; padding: 18px; border-radius: 20px; cursor: pointer;
+    background: var(--well); border: 1.5px solid var(--well-line); color: #fff;
+    font-family: var(--body); font-size: 14px; line-height: 1.45;
+    transition: .15s ease;
+  }
+  .path-card strong { font-family: var(--head); font-size: 16px; }
+  .path-card span:last-child { color: rgba(255,255,255,.82); }
+  .path-card:hover { background: rgba(255,255,255,.1); }
+  .path-card.on { background: rgba(255,255,255,.92); border-color: #fff; color: var(--blue); }
+  .path-card.on span:last-child { color: rgba(6,51,196,.85); }
+  .path-k {
+    width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center;
+    font-family: var(--head); font-weight: 700; font-size: 13px;
+    border: 1.5px solid currentColor;
+  }
+  .deck-opts { display: flex; flex-direction: column; gap: 10px; }
+  .deck-opts[hidden] { display: none; }
+  .deck-opts [role=radiogroup] { display: flex; flex-direction: column; gap: 8px; }
+  .deck-opt {
+    display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px;
+    border-radius: 16px; border: 1px solid var(--well-line); background: var(--well);
+    cursor: pointer; text-transform: none; letter-spacing: 0; font-family: var(--body); margin: 0;
+    font-size: 14px; font-weight: 400; color: #fff;
+  }
+  .deck-opt input { margin-top: 3px; accent-color: #fff; }
+  .deck-opt strong { font-family: var(--head); font-weight: 600; font-size: 15px; }
+  .deck-opt em { display: block; font-style: normal; color: rgba(255,255,255,.78); margin-top: 2px; }
+  .deck-opt:has(input:checked) { border-color: #fff; background: rgba(255,255,255,.14); }
+  .deck-opt:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+  @media (max-width: 640px) { .paths { grid-template-columns: 1fr; } }
+
   /* ——— source input ——— */
   .dropzone {
     display: flex;
@@ -879,7 +914,7 @@
   <header class="page-head">
     <div class="intro">
       <h1>Sources in.<br>Studio out.</h1>
-      <p>Load a source, set design and voice options, create a silent PPTX draft, refine each slide in Chat, then deliver, or add narration.</p>
+      <p>Load a source, set design and voice options, create a silent PPTX draft, refine each slide in Review, then deliver, or add narration.</p>
     </div>
     <div class="rule" aria-hidden="true"></div>
     <div class="nds-badge" aria-hidden="true"><b>NDS</b><span>Application</span></div>
@@ -891,7 +926,35 @@
       <div class="box-head">
         <span class="box-badge">Sources</span>
         <h2 id="src-h">Feed the studio</h2>
-        <p class="desc">Upload a document or deck, or paste text. Types update with the mode you pick in Studio.</p>
+        <p class="desc">Pick where you start. Accepted types update with your choice.</p>
+      </div>
+
+      <div class="paths" role="radiogroup" aria-label="Where do you start?">
+        <button type="button" class="path-card on" data-path="script" role="radio" aria-checked="true">
+          <span class="path-k">A</span>
+          <strong>Start from a script</strong>
+          <span>Any document, audio, or pasted text. NDS builds a PPTX you can download and reuse, then add a voice when you approve it.</span>
+        </button>
+        <button type="button" class="path-card" data-path="deck" role="radio" aria-checked="false">
+          <span class="path-k">B</span>
+          <strong>Use an existing deck</strong>
+          <span>Upload a PPTX. Keep it as is, match it to a template, or let Claude redesign it.</span>
+        </button>
+      </div>
+
+      <div class="deck-opts" id="deck-opts" hidden>
+        <span class="field-label" id="deck-opts-l">What should NDS do with your deck?</span>
+        <div role="radiogroup" aria-labelledby="deck-opts-l">
+          <label class="deck-opt"><input type="radio" name="deck-action" value="narrate" checked>
+            <span><strong>Keep my design, add narration only</strong>
+            <em>Slides, animations, and effects stay exactly as they are.</em></span></label>
+          <label class="deck-opt"><input type="radio" name="deck-action" value="restyle">
+            <span><strong>Apply a template, keep my animations</strong>
+            <em>Changes colours, fonts, background, logo, and footer only.</em></span></label>
+          <label class="deck-opt"><input type="radio" name="deck-action" value="redesign">
+            <span><strong>Let Claude redesign it</strong>
+            <em>Rebuilt in the template, the way Claude sees fit. Animations are not kept.</em></span></label>
+        </div>
       </div>
 
       <div class="cart" id="cart" aria-label="Accepted source types">
@@ -921,7 +984,7 @@
         <textarea id="source-paste" rows="6" placeholder="Paste brief, notes, or outline here…"></textarea>
       </div>
 
-      <p class="hint-line">Audio (.mp3 / .m4a / .wav): transcribed, then the <em>original</em> recording is split onto each slide when you Create Narration.</p>
+      <p class="hint-line" id="audio-hint">Audio (.mp3 / .m4a / .wav): transcribed, then the <em>original</em> recording is split onto each slide when you Create Narration.</p>
 
       <div class="chips" id="accepted-chips">
         <span class="chip">Ready</span>
@@ -932,17 +995,16 @@
       <div class="box-head">
         <span class="box-badge">Studio</span>
         <h2 id="studio-h">Design &amp; voice</h2>
-        <p class="desc">Choose how the deck is built. Draft first without voice, refine in Chat, then deliver or narrate.</p>
+        <p class="desc">Choose how the deck is built. Draft first without voice, refine in Review, then deliver or narrate.</p>
       </div>
 
       <div class="studio-grid">
-        <div class="span2">
-          <label class="field-label" for="mode">Mode</label>
-          <select id="mode">
-            <option value="generate" selected>Create · NDS design</option>
-            <option value="narrate">Narrate an existing deck</option>
-          </select>
-        </div>
+        <select id="mode" hidden aria-hidden="true" tabindex="-1">
+          <option value="generate" selected>Start from a script</option>
+          <option value="redesign">Existing deck · Claude redesign</option>
+          <option value="restyle">Existing deck · template applied</option>
+          <option value="narrate">Existing deck · narration only</option>
+        </select>
         <div id="template-wrap">
           <label class="field-label" for="template">Template</label>
           <select id="template">
@@ -1012,7 +1074,7 @@
 
       <div class="cta-row">
         <button id="go">Create PPTX draft (without voice)</button>
-        <span class="note">Opens Chat so you can refine each slide before delivering.</span>
+        <span class="note">Opens Review so you can refine each slide before delivering.</span>
       </div>
     </section>
 
@@ -1020,7 +1082,7 @@
 
   <section class="panel" id="chat-card" style="display:none">
     <div class="panel-head">
-      <span class="n">Chat</span>
+      <span class="n">Review</span>
       <h2>Refine each slide</h2>
       <span class="sub" id="savestate">Per-slide edits</span>
     </div>
@@ -1253,8 +1315,8 @@ $('nav-deliver').addEventListener('click', e => {
 
 function acceptForMode() {
   const m = $('mode').value;
-  if (m === 'narrate') return ['.pptx'];
-  return ['.docx', '.pdf', '.pptx', '.txt', '.md', '.mp3', '.m4a', '.wav', '.webm', '.ogg'];
+  if (m !== 'generate') return ['.pptx'];
+  return ['.docx', '.pdf', '.txt', '.md', '.mp3', '.m4a', '.wav', '.webm', '.ogg'];
 }
 
 function setChosenFile(file) {
@@ -1330,11 +1392,11 @@ document.addEventListener('keydown', e => {
 
 const HOW_STEPS = {
   '1': {
-    title: '1 · Upload & choose a mode',
-    body: `<p>Start by dropping a source file onto the stage (or click to browse). Then pick what NDS should do:</p>
+    title: '1 · Choose where you start',
+    body: `<p>Pick a starting point in Feed the studio, then drop your file (or click to browse):</p>
       <ul>
-        <li><strong>NDS design</strong> — Claude drafts the deck; NDS builds NIQ-branded slides you can fully edit.</li>
-        <li><strong>Narrate PPTX</strong> — Keep your existing design; NDS only adds spoken narration.</li>
+        <li><strong>Start from a script</strong>: any document, audio, or pasted text. Claude drafts the deck and NDS builds slides you can fully edit.</li>
+        <li><strong>Use an existing deck</strong>: upload a PPTX, then keep its design and add narration only, apply a template while keeping its animations, or let Claude redesign it.</li>
       </ul>
       <p>Optional: set language, guidance, and design notes before you draft.</p>`
   },
@@ -1342,7 +1404,7 @@ const HOW_STEPS = {
     title: '2 · Review & amend',
     body: `<p>After drafting, every slide appears as an editable card so you can shape the story before it speaks:</p>
       <ul>
-        <li><strong>Edit content</strong> — titles, bullets, layouts (Create mode) or read-only slide text (Narrate).</li>
+        <li><strong>Edit content</strong> — titles, bullets, layouts, or read-only slide text when you keep your own design.</li>
         <li><strong>Edit narration</strong> — the exact words that will be spoken on each slide.</li>
         <li><strong>Preview audio</strong> — hear one slide with your chosen voice before building.</li>
         <li><strong>Regenerate</strong> — ask Claude to redraft a slide with an optional instruction.</li>
@@ -1517,17 +1579,64 @@ function updateStyleUI() {
 }
 $('narration_style').addEventListener('change', updateStyleUI);
 
+// Modes that keep the uploaded deck's slides: only narration is edited in Review.
+const KEEPS_DECK = ['narrate', 'restyle'];
+const SCRIPT_TYPES = '.docx,.pdf,.txt,.md,.mp3,.m4a,.wav,.webm,.ogg,audio/*';
+
+// Start path (A: script, B: existing deck) and deck action map onto the hidden mode.
+function currentPath() { return $('mode').value === 'generate' ? 'script' : 'deck'; }
+function deckAction() {
+  const r = document.querySelector('input[name="deck-action"]:checked');
+  return r ? r.value : 'narrate';
+}
+function setPath(path) {
+  $('mode').value = path === 'script' ? 'generate' : deckAction();
+  $('mode').dispatchEvent(new Event('change'));
+}
+document.querySelectorAll('.path-card').forEach(c =>
+  c.addEventListener('click', () => setPath(c.dataset.path)));
+document.querySelectorAll('input[name="deck-action"]').forEach(r =>
+  r.addEventListener('change', () => setPath('deck')));
+
+function syncPathUI() {
+  const path = currentPath();
+  document.querySelectorAll('.path-card').forEach(c => {
+    const on = c.dataset.path === path;
+    c.classList.toggle('on', on);
+    c.setAttribute('aria-checked', on ? 'true' : 'false');
+  });
+  $('deck-opts').hidden = path !== 'deck';
+  $('audio-hint').hidden = path !== 'script';
+  const m = $('mode').value;
+  const radio = document.querySelector(`input[name="deck-action"][value="${m}"]`);
+  if (radio) radio.checked = true;
+  // A file picked for the other path no longer fits: clear it.
+  const f = $('file').files[0];
+  if (f && !acceptForMode().some(ext => f.name.toLowerCase().endsWith(ext))) {
+    $('file').value = '';
+    $('drop-label').textContent = 'Drop a document here or click to choose';
+    $('drop').classList.remove('has-file');
+    const cf = $('cart-file-name');
+    if (cf) { cf.textContent = 'No source yet'; cf.classList.remove('on'); }
+  }
+}
+
 function updateModeUI() {
   const m = $('mode').value;
-  const locked = m === 'narrate';
-  $('template-wrap').style.display = m === 'generate' ? 'block' : 'none';
-  $('design-notes-wrap').style.display = m === 'narrate' ? 'none' : 'block';
-  $('file').accept = locked ? '.pptx' : '.docx,.pdf,.pptx,.txt,.md,.mp3,.m4a,.wav,.webm,.ogg,audio/*';
+  const deck = m !== 'generate';
+  $('template-wrap').style.display = m === 'narrate' ? 'none' : 'block';
+  $('design-notes-wrap').style.display = KEEPS_DECK.includes(m) ? 'none' : 'block';
+  $('file').accept = deck ? '.pptx' : SCRIPT_TYPES;
   $('drop-hint').textContent =
-    m === 'narrate' ? 'Upload a .pptx with no narration — NDS writes a script per slide from the page content'
+    m === 'narrate' ? 'Upload a .pptx: NDS writes a narration script per slide and keeps your design'
+    : m === 'restyle' ? 'Upload a .pptx: NDS applies the template and keeps every animation'
+    : m === 'redesign' ? 'Upload a .pptx: Claude rebuilds it in the template you pick'
     : 'Document, paste, or audio (.mp3 / .m4a / .wav)';
   $('go').textContent = m === 'narrate' ? 'Create narration scripts (no voice yet)'
+    : m === 'restyle' ? 'Create narration scripts (no voice yet)'
+    : m === 'redesign' ? 'Redesign deck (without voice)'
     : 'Create PPTX draft (without voice)';
+  syncPathUI();
   syncModeTiles();
   syncCartPills();
   syncPipelinePreview();
@@ -1535,7 +1644,7 @@ function updateModeUI() {
 
 function syncCartPills() {
   const accepted = acceptForMode();
-  const pasteOk = $('mode').value !== 'narrate';
+  const pasteOk = $('mode').value === 'generate';
   document.querySelectorAll('.cart-pill[data-ext]').forEach(p => {
     const ext = p.dataset.ext;
     const on = ext === 'paste' ? pasteOk : accepted.includes(ext);
@@ -1561,10 +1670,14 @@ function syncPipelinePreview() {
   const tpl = $('template').value;
   const logic = {
     generate: `const deck = NDS.draft(source, { template: "${tpl}", lang: "${lang}" });`,
+    redesign: `const deck = NDS.redesign(pptx, { template: "${tpl}", lang: "${lang}" });`,
+    restyle: `const deck = NDS.applyTemplate(pptx, "${tpl}"); // animations kept`,
     narrate: `const scripts = NDS.writeNarration(pptx.slides); // one script per page`,
   };
   const result = {
     generate: 'NIQ slides + narration script',
+    redesign: 'Redesigned slides + narration script',
+    restyle: 'Your slides in the template + narration script',
     narrate: 'Your slides + narration script per page',
   };
   const el = $('pipe-logic');
@@ -1634,15 +1747,15 @@ $('go').addEventListener('click', async () => {
   const f = $('file').files[0];
   const pasted = ($('source-paste')?.value || '').trim();
   const m = $('mode').value;
-  if (['narrate'].includes(m)) {
-    if (!f) { toast('Upload a .pptx for this mode.', 'error'); return; }
+  if (m !== 'generate') {
+    if (!f) { toast('Upload a .pptx for this option.', 'error'); return; }
   } else if (!f && !pasted) {
     toast('Upload a document or paste source text.', 'error');
     return;
   }
   const fd = new FormData();
   if (f) fd.append('file', f);
-  if (pasted && m !== 'narrate') fd.append('source_text', pasted);
+  if (pasted && m === 'generate') fd.append('source_text', pasted);
   fd.append('language', $('language').value);
   fd.append('guidance', $('guidance').value);
   fd.append('template', $('template').value);
@@ -1756,7 +1869,7 @@ async function poll() {
     applyOptions(job.options);
     syncRedraftUndo(job);
     renderReview(false);
-    const narrate = job.options?.mode === 'narrate';
+    const narrate = KEEPS_DECK.includes(job.options?.mode);
     const voiced = job.last_build_voiced !== false && job.options?.with_voice !== false;
     let html = '';
     if (job.file) {
@@ -1773,9 +1886,9 @@ async function poll() {
       html += '<button class="small ghost" style="margin-left:8px" onclick="exportVideo()">Export MP4 video</button>';
     html += '<div class="hint-line" style="margin-top:8px">' +
       (job.last_build_voiced === false
-        ? 'Silent draft ready. Keep editing in Chat, or press Create Narration to add voice.'
+        ? 'Silent draft ready. Keep editing in Review, or press Create Narration to add voice.'
         : narrate ? 'Your original design is untouched — narration scripts (and audio, if built) were added.'
-               : 'You can keep amending in Chat and rebuild — only changed slides are re-voiced.') + '</div>';
+               : 'You can keep amending in Review and rebuild — only changed slides are re-voiced.') + '</div>';
     $('result').innerHTML = html;
     loadHistory();
     return;
@@ -1788,7 +1901,7 @@ function renderReview(scroll = true) {
   card.style.display = 'block';
   $('deck-title').value = deck.deck_title || '';
   $('deck-subtitle').value = deck.subtitle || '';
-  $('add-slide').style.display = $('mode').value === 'narrate' ? 'none' : 'inline-block';
+  $('add-slide').style.display = KEEPS_DECK.includes($('mode').value) ? 'none' : 'inline-block';
   const holder = $('slides');
   holder.innerHTML = '';
   deck.slides.forEach((s, i) => holder.appendChild(slideCard(s, i)));
@@ -1814,7 +1927,7 @@ function contentFields(s) {
 }
 
 function slideCard(s, i) {
-  const narrate = $('mode').value === 'narrate';
+  const narrate = KEEPS_DECK.includes($('mode').value);
   const div = document.createElement('div');
   div.className = 'chat-slide';
   const cf = contentFields(s);
@@ -1994,7 +2107,7 @@ async function saveDeck() {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(deck),
   });
   $('savestate').textContent = res.ok ? 'All changes saved' : 'Save failed';
-  if (res.ok && $('mode').value !== 'narrate') {
+  if (res.ok && !KEEPS_DECK.includes($('mode').value)) {
     previewVer += 1;
     document.querySelectorAll('.slide-thumb').forEach(img => {
       const idx = img.dataset.index;
@@ -2132,7 +2245,7 @@ async function exportVideo() {
   poll();
 }
 
-const MODE_LABEL = { generate: 'NDS design', narrate: 'Narration scripts' };
+const MODE_LABEL = { generate: 'From a script', redesign: 'Claude redesign', restyle: 'Template applied', narrate: 'Narration only' };
 const STATUS_LABEL = { review: 'draft', done: 'built', error: 'failed', cancelled: 'cancelled',
                        drafting: 'drafting', building: 'building', rendering: 'rendering', queued: 'queued' };
 
