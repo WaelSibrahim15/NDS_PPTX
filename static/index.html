@@ -25,6 +25,7 @@
     --body: #bdbdc4;
     --muted: #86868f;
     --orange: #ff8a3d;
+    --gold: #d4af37;
     --ember: #ef5d3b;
     --magenta: #c24e8e;
     --grad: linear-gradient(115deg, #ff9443 0%, #f0623c 48%, #c24e8e 100%);
@@ -139,7 +140,9 @@
     position: relative; margin-top: 22px; padding: 40px;
     border-radius: 28px; background: linear-gradient(180deg, rgba(20,20,24,.85), rgba(10,10,12,.85));
     border: 1px solid var(--line);
+    transition: border-color .25s, box-shadow .25s;
   }
+  .step.active { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 0 28px rgba(212,175,55,.18); }
   .step-head { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 22px; align-items: start; margin-bottom: 30px; }
   .step-num {
     width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center;
@@ -292,17 +295,7 @@
   }
   .download:hover { background: #ffe3cf; }
 
-  /* history + settings */
-  .hist-grid { display: grid; gap: 10px; }
-  .hist-row {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 14px 18px;
-    border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
-  }
-  .hist-row strong { color: var(--text); font-weight: 500; }
-  .hist-row .meta { color: var(--muted); font-size: 14px; }
-  .hist-row .links { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-left: auto; font-size: 14px; }
-  .hist-row a { font-family: var(--head); font-weight: 500; text-decoration: none; }
-  .hist-row a:hover { text-decoration: underline; }
+  /* settings */
   details summary { cursor: pointer; font-family: var(--head); font-weight: 500; color: var(--text); font-size: 17px; }
   .keystate { font-size: 12px; margin-left: 6px; }
   .keystate.ok { color: var(--ok); }
@@ -638,15 +631,6 @@
     <div id="status-text"></div>
     <button type="button" class="small warn" id="cancel-btn">Cancel</button>
     <div id="result" style="margin-top:14px"></div>
-  </section>
-
-  <section class="step quiet" id="history-card" style="display:none">
-    <div class="step-head" style="margin-bottom:18px">
-      <span class="step-num" aria-hidden="true">↺</span>
-      <h2>Past decks</h2>
-      <p class="desc">Open, download, or delete a recent deck.</p>
-    </div>
-    <div class="hist-grid" id="history"></div>
   </section>
 
   <section class="step quiet">
@@ -1117,7 +1101,7 @@ function showProgress(title, cancellable) {
   setStatus(0, 'Starting…', false);
   setCancelVisible(!!cancellable);
   syncSteps();
-  $('progress-card').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  goToStep($('progress-card'), 'nearest');
 }
 
 function setCancelVisible(on) {
@@ -1181,7 +1165,6 @@ async function poll() {
       setCancelVisible(false);
       $('go').disabled = false;
       setBuildButtons(false);
-      loadHistory();
       return;
     }
     setStatus(job.progress, job.step, false, job.eta_seconds);
@@ -1203,7 +1186,6 @@ async function poll() {
       syncRedraftUndo(job);
       renderAll(false);
       showResult(job);
-      loadHistory();
       return;
     }
     setTimeout(run, 1500);
@@ -1239,7 +1221,7 @@ function renderAll(scroll) {
   if ($('narration-card').style.display !== 'none') renderNarration();
   if (scroll) {
     const target = keepsDeck() ? $('narration-card') : $('chat-card');
-    target.scrollIntoView({ behavior: 'smooth' });
+    goToStep(target);
   }
 }
 
@@ -1574,7 +1556,7 @@ $('to-narration').addEventListener('click', async () => {
   store('nds-narration-' + jobId, '1');
   syncSteps();
   renderNarration();
-  $('narration-card').scrollIntoView({ behavior: 'smooth' });
+  goToStep($('narration-card'));
 });
 
 $('narr-rewrite').addEventListener('click', async () => {
@@ -1672,60 +1654,15 @@ function resetApp() {
   setSaveState('');
   updateModeUI();
   updateStyleUI();
+  setActiveStep($('step-source'));
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 $('clear-btn').addEventListener('click', () => {
   if ((deck || $('file').files[0] || $('source-paste').value.trim() || $('guidance').value.trim())
-      && !confirm('Clear everything and start afresh? Your past decks stay under Past decks.')) return;
+      && !confirm('Clear everything and start afresh?')) return;
   resetApp();
   toast('Cleared. Start a new deck.', 'ok');
 });
-
-const MODE_LABEL = { generate: 'From a script', redesign: 'Claude redesign', restyle: 'Template applied', narrate: 'Narration only' };
-const STATUS_LABEL = { review: 'draft', done: 'built', error: 'failed', cancelled: 'cancelled',
-                       drafting: 'drafting', building: 'building', rendering: 'rendering', queued: 'queued' };
-
-async function loadHistory() {
-  const items = await (await fetch('/api/jobs')).json();
-  if (!items.length) { $('history-card').style.display = 'none'; return; }
-  $('history-card').style.display = 'block';
-  $('history').innerHTML = '';
-  items.forEach(j => {
-    const when = new Date(j.updated * 1000).toLocaleString();
-    const badge = STATUS_LABEL[j.status] || j.status;
-    const mode = MODE_LABEL[j.mode] || j.mode || '';
-    const row = document.createElement('div');
-    row.className = 'hist-row';
-    row.innerHTML = `
-      <strong>${escapeHtml(j.title)}</strong>
-      <span class="meta">${escapeHtml(mode)}${mode ? ' · ' : ''}${escapeHtml(badge)} · ${escapeHtml(when)}</span>
-      <span class="links"></span>`;
-    const links = row.querySelector('.links');
-    const link = (href, text) => { const a = document.createElement('a'); a.href = href; a.textContent = text; links.appendChild(a); };
-    link('/?job=' + encodeURIComponent(j.id), 'Open');
-    if (j.has_pptx) link('/api/jobs/' + j.id + '/download', 'PPTX');
-    if (j.has_video) link('/api/jobs/' + j.id + '/video', 'MP4');
-    const busy = ['queued', 'drafting', 'building', 'rendering'].includes(j.status);
-    const btn = document.createElement('button');
-    btn.type = 'button'; btn.className = 'small warn'; btn.textContent = busy ? 'Cancel' : 'Delete';
-    btn.onclick = async () => {
-      if (!busy && !confirm('Delete this past deck and its files?')) return;
-      btn.disabled = true;
-      const res = await fetch('/api/jobs/' + j.id + (busy ? '/cancel' : ''), { method: busy ? 'POST' : 'DELETE' });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        toast(e.detail || (busy ? 'Could not cancel' : 'Delete failed'), 'error');
-        btn.disabled = false;
-        return;
-      }
-      if (!busy && jobId === j.id) resetApp();
-      toast(busy ? 'Cancel requested' : 'Deleted', 'ok');
-      setTimeout(loadHistory, busy ? 800 : 0);
-    };
-    links.appendChild(btn);
-    $('history').appendChild(row);
-  });
-}
 
 // ——— templates: upload a Claude Design export, review, save, edit, delete
 const TPL_ROLES = ['white', 'deep', 'bright', 'light', 'orange', 'tint', 'panel', 'ink', 'hairline'];
@@ -2001,12 +1938,30 @@ $('tpl-manage-btn').addEventListener('click', async () => {
   $('tpl-manage').showModal();
 });
 
+// ——— active box: gold frame on the step the user is working in
+function setActiveStep(el) {
+  if (!el || el.classList.contains('active')) return;
+  document.querySelectorAll('.step.active').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+}
+function goToStep(el, block = 'start') {
+  setActiveStep(el);
+  el.scrollIntoView({ behavior: 'smooth', block });
+}
+['pointerdown', 'focusin'].forEach(ev => document.addEventListener(ev, e => {
+  const step = e.target.closest?.('.step');
+  if (step) setActiveStep(step);
+}));
+document.querySelectorAll('.steps-nav a[href^="#"]').forEach(a => a.addEventListener('click', () => {
+  setActiveStep(document.querySelector(a.getAttribute('href')));
+}));
+setActiveStep($('step-source'));
+
 (async function init() {
   await refreshConfig();
   await refreshTemplates();
   updateModeUI();
   updateStyleUI();
-  loadHistory();
   const q = new URLSearchParams(location.search).get('job');
   if (q) {
     jobId = q;
