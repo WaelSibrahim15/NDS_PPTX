@@ -100,9 +100,31 @@ takeaway, not a bare topic.
 """
 
 
-def system_prompt(theme=None) -> str:
+USER_PRIORITY = """
+
+USER INSTRUCTIONS: HIGHEST PRIORITY
+The user gave the instructions below. They override EVERY rule above: slide count, layout \
+choice, text length, tone, audience, design rules, narration length and style. Follow each one \
+exactly and literally. Where an instruction conflicts with a rule above, the instruction wins, \
+always. Never silently drop or soften an instruction.
+<user_instructions>
+{guidance}
+</user_instructions>"""
+
+REMINDER = ("\n\nBefore you answer, re-read the <user_instructions> in the system prompt and make "
+            "sure every single one is satisfied. They take priority over all other rules.")
+
+
+def with_guidance(system: str, guidance: str) -> str:
+    """Append the user's instructions to a system prompt as the top-priority rules."""
+    guidance = (guidance or "").strip()
+    return system + USER_PRIORITY.replace("{guidance}", guidance) if guidance else system
+
+
+def system_prompt(theme=None, guidance: str = "") -> str:
     """The drafting system prompt for a template (id or theme dict). NIQ
-    compliance rules apply only to the built-in NIQ template."""
+    compliance rules apply only to the built-in NIQ template; the user's
+    guidance goes last and overrides everything."""
     t = themes.load(theme or "niq")
     if t["symbols"]:
         icon_rule = ("the brand symbol that best fits the card, chosen ONLY from: "
@@ -118,11 +140,46 @@ def system_prompt(theme=None) -> str:
             "{brand_rules}",
             ("\nBrand rules from the template (follow them where they apply to slide content):\n"
              + brand + "\n") if brand else "")
-    return (SYSTEM_TEMPLATE.replace("{icon_rule}", icon_rule)
-            .replace("{design_rules}", rules))
+    return with_guidance(SYSTEM_TEMPLATE.replace("{icon_rule}", icon_rule)
+                         .replace("{design_rules}", rules), guidance)
 
 
 SYSTEM = system_prompt("niq")
+
+NARRATION_SYSTEM = """You are the narration writer of NDS (Narrated Deck Studio). You write the \
+exact words an artificial voice speaks over each slide of a presentation.
+- Write for the ear: complete sentences, spoken register, natural transitions between slides.
+- Do not read the slide text verbatim; explain and connect it.
+- Aim for 40-90 words per content slide; the title slide gets a short welcome of 2-3 sentences.
+- Never include stage directions, markdown, emoji, or text in brackets; only speakable words.
+- Invent nothing beyond what the slides (and their speaker notes) say."""
+
+
+def _check_guidance(client, plan: DeckPlan, guidance: str, system: str) -> DeckPlan:
+    """Second pass: check the draft against each user instruction and fix any
+    miss. The model returns the plan unchanged when it already complies."""
+    if not (guidance or "").strip():
+        return plan
+    prompt = (
+        f"Here is a draft deck plan with {len(plan.slides)} slides:\n"
+        f"{plan.model_dump_json(indent=1)}\n\n"
+        "Check it against EACH instruction in <user_instructions>, one by one (count slides, "
+        "check lengths, tone, audience, language, layouts, wording, narration style). "
+        "Return the complete corrected deck plan so that every instruction is satisfied. "
+        "Keep everything that already complies. If the plan already satisfies every "
+        "instruction, return it unchanged."
+    )
+    response = client.messages.parse(
+        model=MODEL,
+        max_tokens=16000,
+        thinking={"type": "adaptive"},
+        system=system,
+        messages=[{"role": "user", "content": prompt}],
+        output_format=DeckPlan,
+    )
+    if response.stop_reason == "refusal" or response.parsed_output is None:
+        return plan  # keep the first draft rather than fail the job
+    return response.parsed_output
 
 
 CONVERSATION_RULES = """
@@ -147,20 +204,21 @@ def draft_deck(
 ) -> DeckPlan:
     client = Anthropic(api_key=api_key)
 
+    system = system_prompt(theme, guidance)
     user_prompt = (
         f"Language for slides and narration: {language}\n"
-        + (f"User guidance: {guidance}\n" if guidance.strip() else "")
         + (CONVERSATION_RULES if narration_style == "conversation" else "")
         + "\nSource material:\n<source>\n"
         + source_text
         + "\n</source>\n\nProduce the deck plan now."
+        + (REMINDER if guidance.strip() else "")
     )
 
     response = client.messages.parse(
         model=MODEL,
         max_tokens=16000,
         thinking={"type": "adaptive"},
-        system=system_prompt(theme),
+        system=system,
         messages=[{"role": "user", "content": user_prompt}],
         output_format=DeckPlan,
     )
@@ -168,7 +226,7 @@ def draft_deck(
         raise RuntimeError("The drafting model declined this request. Try rephrasing the source or guidance.")
     if response.parsed_output is None:
         raise RuntimeError("The drafting model returned no deck plan. Please try again.")
-    return response.parsed_output
+    return _check_guidance(client, response.parsed_output, guidance, system)
 
 
 def draft_narration_for_existing(
@@ -203,7 +261,6 @@ def draft_narration_for_existing(
 
     user_prompt = (
         f"Language for the narration: {language}\n"
-        + (f"User guidance: {guidance}\n" if guidance.strip() else "")
         + (CONVERSATION_RULES if narration_style == "conversation" else "")
         + "\nThis is an EXISTING presentation. Do NOT redesign it — your only job is to "
         "write one narration SCRIPT per slide, in slide order. These scripts are the basis "
@@ -215,13 +272,14 @@ def draft_narration_for_existing(
         "labels only, with natural transitions between slides.\n"
         f"- Return exactly {len(slides)} narrations.\n\n"
         + "\n\n".join(slide_blocks)
+        + (REMINDER if guidance.strip() else "")
     )
 
     response = client.messages.parse(
         model=MODEL,
         max_tokens=16000,
         thinking={"type": "adaptive"},
-        system=SYSTEM,
+        system=with_guidance(NARRATION_SYSTEM, guidance),
         messages=[{"role": "user", "content": user_prompt}],
         output_format=NarrationPlan,
     )
@@ -244,6 +302,7 @@ def regenerate_slide(
     narration_only: bool = False,
     narration_style: str = "single",
     theme=None,
+    guidance: str = "",
 ) -> Slide:
     """Redraft a single slide, keeping the rest of the deck as context."""
     client = Anthropic(api_key=api_key)
@@ -274,13 +333,15 @@ def regenerate_slide(
         "natural narration hand-off).\n\n"
         f"Source material:\n<source>\n{source_text}\n</source>\n\n"
         "Return the redrafted slide now."
+        + (REMINDER if guidance.strip() else "")
     )
 
     response = client.messages.parse(
         model=MODEL,
         max_tokens=8000,
         thinking={"type": "adaptive"},
-        system=system_prompt(theme),
+        system=(with_guidance(NARRATION_SYSTEM, guidance) if narration_only
+                else system_prompt(theme, guidance)),
         messages=[{"role": "user", "content": user_prompt}],
         output_format=Slide,
     )

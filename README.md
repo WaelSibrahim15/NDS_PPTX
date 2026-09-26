@@ -71,21 +71,24 @@ Health check: `GET /health` → `{"ok": true}`.
 | | `restyle`: apply a template, keep animations | a finished `.pptx` | `restyle.py` changes only colours, fonts, backgrounds, footer and logo; shapes, positions, animations and transitions are untouched. Then as `narrate` |
 | | `redesign`: let Claude redesign | a finished `.pptx` | The deck's text goes through the `generate` pipeline; animations are not kept |
 
-All modes share the same flow: **1 · Source & options → 2 · Review & amend →
-3 · Progress & downloads** (the progress bar and download buttons appear directly
-under the *Build* button). Every job is resumable via its URL
-(`/?job=<id>`) and listed in **Past decks**.
+The flow runs in steps: **01 Source → 02 Design → 03 Review slides → 04 Narration →
+05 Deliver**. Slides are drafted and reviewed first; the Narration step opens only after
+**Approve slides**. "Keep my design" and "Apply a template" keep the deck's slides, so
+they skip slide review and go straight to Narration (step 02 becomes *Instructions*).
+**Clear** (top right) forgets the open deck and every field and starts afresh; past
+decks stay in **Past decks**. Every job is resumable via its URL (`/?job=<id>`).
 
-### Options available in step 1
+### Options
 
-- **Narration style** — single narrator, or a **two-voice conversation** (Alex/Sam
-  podcast style, voiced with two different voices and stitched per slide).
-- **Language** — English, French, German, Spanish, Italian (slides + narration).
-- **Guidance** — free-text instructions to the drafter (length, tone, audience).
-- **Template** — NIQ (built in), Neutral professional (built in), or one you
-  uploaded (see *Templates* below).
-- **Design notes** — pick any of 10 slide-design options and/or type your own;
-  passed to the drafter (hidden in Narrate mode where the design is locked).
+- **Template** and **Language** (slides + narration) in step 02.
+- **Your instructions** (step 02) — top priority: they go last in Claude's system
+  prompt as rules that override every default (slide count, layouts, tone, length),
+  are repeated after the source, and a second pass checks the draft against them and
+  fixes any miss. They also apply to redrafts, single-slide redos and narration
+  rewrites, and edits to the box are picked up by those actions.
+- **Narration style** (step 04) — single narrator, or a **two-voice conversation**
+  (Alex/Sam, two voices stitched per slide). After switching style, **Rewrite all
+  narration** turns the scripts into the new style.
 
 ### Templates (upload from Claude Design)
 
