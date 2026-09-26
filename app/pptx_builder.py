@@ -268,21 +268,103 @@ def _embed_autoplay_audio(slide, audio_path: Path):
     )
     spid = movie.shape_id
     duration_ms = int(audio_duration_seconds(audio_path) * 1000)
+    existing = slide.element.find(qn("p:timing"))
+    if existing is not None and _merge_audio_into_timing(existing, spid, duration_ms):
+        return  # the deck's own animations stay untouched
     timing = etree.fromstring(_build_timing_xml(spid, duration_ms).encode())
     _insert_slide_child(slide, timing)
 
 
+def _merge_audio_into_timing(timing, spid: int, dur_ms: int) -> bool:
+    """Add narration playback to a slide that already has animations, keeping
+    every existing effect. The audio starts when the slide appears, in parallel
+    with any auto-start effects; click-triggered effects still wait for clicks.
+    Returns False when the timing tree has no shape we recognise."""
+    root_ctn = timing.find(f"{qn('p:tnLst')}/{qn('p:par')}/{qn('p:cTn')}")
+    if root_ctn is None or root_ctn.get("nodeType") != "tmRoot":
+        return False
+    root_children = root_ctn.find(qn("p:childTnLst"))
+    if root_children is None:
+        root_children = etree.SubElement(root_ctn, qn("p:childTnLst"))
+    next_id = max((int(c.get("id", 0)) for c in timing.iter(qn("p:cTn"))), default=0) + 1
+
+    main_ctn = next((c for c in root_children.iter(qn("p:cTn"))
+                     if c.get("nodeType") == "mainSeq"), None)
+    if main_ctn is None:  # only trigger (interactive) sequences: add a main sequence
+        seq = etree.fromstring(
+            f'<p:seq xmlns:p="{_P}" concurrent="1" nextAc="seek">'
+            f'<p:cTn id="{next_id}" dur="indefinite" nodeType="mainSeq"><p:childTnLst/></p:cTn>'
+            f'<p:prevCondLst><p:cond evt="onPrev" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:prevCondLst>'
+            f'<p:nextCondLst><p:cond evt="onNext" delay="0"><p:tgtEl><p:sldTgt/></p:tgtEl></p:cond></p:nextCondLst>'
+            f'</p:seq>'.encode())
+        root_children.insert(0, seq)
+        main_ctn = seq.find(qn("p:cTn"))
+        next_id += 1
+    main_children = main_ctn.find(qn("p:childTnLst"))
+    if main_children is None:
+        main_children = etree.SubElement(main_ctn, qn("p:childTnLst"))
+    main_id = main_ctn.get("id")
+
+    media = etree.fromstring(
+        _TIMING_MEDIA.format(i0=next_id, i1=next_id + 1, i2=next_id + 2, spid=spid, dur=dur_ms)
+        .replace("<p:par>", f'<p:par xmlns:p="{_P}">', 1).encode())
+
+    # The first step of the main sequence starts on its own when it listens for
+    # the sequence's onBegin; join it so audio and auto-start effects run together.
+    first = main_children.find(qn("p:par"))
+    first_ctn = first.find(qn("p:cTn")) if first is not None else None
+    auto_start = first_ctn is not None and any(
+        c.get("evt") == "onBegin" for c in first_ctn.iterfind(f"{qn('p:stCondLst')}/{qn('p:cond')}"))
+    if auto_start:
+        group = first_ctn.find(qn("p:childTnLst"))
+        if group is None:
+            group = etree.SubElement(first_ctn, qn("p:childTnLst"))
+        group.insert(0, media)
+        return True
+    step = etree.fromstring(
+        f'<p:par xmlns:p="{_P}"><p:cTn id="{next_id + 3}" fill="hold">'
+        f'<p:stCondLst><p:cond delay="indefinite"/>'
+        f'<p:cond evt="onBegin" delay="0"><p:tn val="{main_id}"/></p:cond></p:stCondLst>'
+        f'<p:childTnLst/></p:cTn></p:par>'.encode())
+    step.find(f"{qn('p:cTn')}/{qn('p:childTnLst')}").append(media)
+    main_children.insert(0, step)
+    return True
+
+
+_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def _slide_transitions(slide) -> list:
+    """Every p:transition on the slide, including the ones PowerPoint wraps in
+    mc:AlternateContent (newer transition effects write a p14 choice + fallback)."""
+    root = slide.element
+    found = list(root.findall(qn("p:transition")))
+    for alt in root.findall(f"{{{_MC}}}AlternateContent"):
+        found.extend(alt.iter(qn("p:transition")))
+    return found
+
+
 def _set_auto_advance(slide, seconds: float):
-    """Advance to the next slide automatically once the narration finishes."""
+    """Advance to the next slide automatically once the narration finishes.
+    A transition the deck already has keeps its effect; only the timing is set."""
     adv_ms = int(seconds * 1000)
+    existing = _slide_transitions(slide)
+    if existing:
+        for tr in existing:
+            if int(tr.get("advTm", "0") or 0) < adv_ms:
+                tr.set("advTm", str(adv_ms))
+            tr.set("advClick", tr.get("advClick", "1"))
+        return
     transition = etree.fromstring(
         f'<p:transition xmlns:p="{_P}" spd="med" advClick="1" advTm="{adv_ms}"><p:fade/></p:transition>'.encode()
     )
     _insert_slide_child(slide, transition)
 
 
-# CT_Slide child order (the ones we touch): cSld, clrMapOvr, transition, timing
-_ORDER = [qn("p:cSld"), qn("p:clrMapOvr"), qn("p:transition"), qn("p:timing")]
+# CT_Slide child order: cSld, clrMapOvr, transition, timing, extLst. PowerPoint
+# may wrap the transition in mc:AlternateContent, which takes the same slot.
+_ORDER = [qn("p:cSld"), qn("p:clrMapOvr"), qn("p:transition"), qn("p:timing"), qn("p:extLst")]
+_SLOT = {f"{{{_MC}}}AlternateContent": qn("p:transition")}
 
 
 def _insert_slide_child(slide, element):
@@ -292,7 +374,8 @@ def _insert_slide_child(slide, element):
         root.remove(existing)
     rank = _ORDER.index(element.tag)
     for child in root:
-        if child.tag in _ORDER and _ORDER.index(child.tag) > rank:
+        tag = _SLOT.get(child.tag, child.tag)
+        if tag in _ORDER and _ORDER.index(tag) > rank:
             child.addprevious(element)
             return
     root.append(element)

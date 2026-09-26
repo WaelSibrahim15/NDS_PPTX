@@ -330,8 +330,10 @@ def start_draft(
     if not cfg.get("anthropic_api_key"):
         raise HTTPException(400, "No Anthropic API key saved yet — add it under Settings.")
 
-    if mode not in ("generate", "narrate"):
-        raise HTTPException(400, f"Unknown mode '{mode}' — choose NDS design or narration.")
+    # generate: script → NDS deck · redesign: existing .pptx rebuilt by Claude in a
+    # template · narrate: existing .pptx kept as is, narration added.
+    if mode not in ("generate", "redesign", "narrate"):
+        raise HTTPException(400, f"Unknown mode '{mode}' — start from a script or an existing deck.")
     _check_template(template)
 
     pasted = (source_text or "").strip()
@@ -339,9 +341,9 @@ def start_draft(
     suffix = Path(file.filename).suffix.lower() if has_file else ""
     is_audio = has_file and suffix in audio_source.AUDIO_SUFFIXES
 
-    if mode == "narrate":
+    if mode in ("narrate", "redesign"):
         if not has_file or suffix != ".pptx":
-            raise HTTPException(400, "Create narration for each slide needs a .pptx file — upload the PowerPoint itself.")
+            raise HTTPException(400, "This option needs a .pptx file — upload the PowerPoint itself.")
     elif is_audio:
         if mode != "generate":
             raise HTTPException(400, "Audio upload works with NDS design.")
