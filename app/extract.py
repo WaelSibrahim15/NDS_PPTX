@@ -59,7 +59,7 @@ def extract_slides(path: Path) -> list:
             if shape.has_text_frame and shape.text_frame.text.strip()
         ]
         notes = ""
-        if slide.has_notes_slide:
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
             notes = slide.notes_slide.notes_text_frame.text.strip()
         slides.append({"index": i, "texts": texts, "notes": notes})
     if not slides:
@@ -77,6 +77,6 @@ def _from_pptx(path: Path) -> str:
         for shape in slide.shapes:
             if shape.has_text_frame:
                 parts.append(shape.text_frame.text)
-        if slide.has_notes_slide:
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
             parts.append(f"[Speaker notes] {slide.notes_slide.notes_text_frame.text}")
     return "\n".join(parts)
