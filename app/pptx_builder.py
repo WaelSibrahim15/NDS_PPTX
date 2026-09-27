@@ -11,6 +11,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
+from pptx.oxml import parse_xml
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
@@ -35,6 +36,25 @@ def _find_media_by_sha1_safe(self, sha1):
 
 _MediaParts._find_by_sha1 = _find_media_by_sha1_safe
 
+
+def _set_notes(slide, text: str) -> None:
+    """Write speaker notes, adding the notes body placeholder when the deck's
+    notes master has none (python-pptx then returns notes_text_frame=None)."""
+    notes = slide.notes_slide
+    if notes.notes_text_frame is None:
+        tree = notes.shapes._spTree
+        ids = [int(v) for v in tree.xpath("//@id") if str(v).isdigit()]
+        sp = parse_xml(
+            '<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+            ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            f'<p:nvSpPr><p:cNvPr id="{max(ids, default=1) + 1}" name="Notes Placeholder"/>'
+            '<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>'
+            '<p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr>'
+            "<p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>"
+        )
+        tree.append(sp)
+    notes.notes_text_frame.text = text
+
 SLIDE_W = Inches(design.W)
 SLIDE_H = Inches(design.H)
 
@@ -56,7 +76,7 @@ def build_deck(
         _draw_scene(slide, design.layout_slide(plan, idx, template))
 
         # narration into speaker notes so a human presenter can reuse the deck
-        slide.notes_slide.notes_text_frame.text = spec.narration
+        _set_notes(slide, spec.narration)
 
         audio = audio_files[idx] if idx < len(audio_files) else None
         if audio is not None and Path(audio).exists():
@@ -179,7 +199,7 @@ def narrate_existing_pptx(
     prs = Presentation(str(src_path))
     for idx, slide in enumerate(prs.slides):
         if idx < len(narrations) and narrations[idx].strip():
-            slide.notes_slide.notes_text_frame.text = narrations[idx]
+            _set_notes(slide, narrations[idx])
         audio = audio_files[idx] if idx < len(audio_files) else None
         if audio is not None and Path(audio).exists():
             duration = audio_duration_seconds(Path(audio))
